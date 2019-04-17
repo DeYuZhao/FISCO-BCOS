@@ -29,6 +29,8 @@
 #include <libconsensus/pbft/PBFTSealer.h>
 #include <libconsensus/raft/RaftEngine.h>
 #include <libconsensus/raft/RaftSealer.h>
+#include <libconsensus/tendermint/TendermintEngine.h>
+#include <libconsensus/tendermint/TendermintSealer.h>
 #include <libdevcore/OverlayDB.h>
 #include <libdevcore/easylog.h>
 #include <libprecompiled/Common.h>
@@ -38,6 +40,7 @@
 #include <boost/algorithm/string.hpp>
 #include <boost/lexical_cast.hpp>
 #include <boost/property_tree/ini_parser.hpp>
+
 using namespace boost::property_tree;
 using namespace dev::blockverifier;
 using namespace dev::blockchain;
@@ -372,6 +375,33 @@ std::shared_ptr<Sealer> Ledger::createPBFTSealer()
     return pbftSealer;
 }
 
+std::shared_ptr<Sealer> Ledger::createTendermintSealer()
+{
+    Ledger_LOG(DEBUG) << LOG_BADGE("initLedger") << LOG_BADGE("createTendermintSealer");
+    if (!m_txPool || !m_blockChain || !m_sync || !m_blockVerifier || !m_dbInitializer)
+    {
+        Ledger_LOG(DEBUG) << LOG_BADGE("initLedger") << LOG_DESC("createTendermintSealer Failed");
+        return nullptr;
+    }
+
+    dev::PROTOCOL_ID protocol_id = getGroupProtoclID(m_groupId, ProtocolID::Tendermint);
+    /// create consensus engine according to "consensusType"
+    Ledger_LOG(DEBUG) << LOG_BADGE("initLedger") << LOG_BADGE("createTendermintSealer")
+                      << LOG_KV("baseDir", m_param->baseDir()) << LOG_KV("Protocol", protocol_id);
+    std::shared_ptr<Sealer> tendermintSealer = std::make_shared<TendermintSealer>(m_service, m_txPool,
+            m_blockChain, m_sync, m_blockVerifier, protocol_id, m_param->baseDir(), m_keyPair,
+            m_param->mutableConsensusParam().sealerList);
+
+    /// set params for TendermintEngine
+    std::shared_ptr<TendermintEngine> tendermintEngine =
+            std::dynamic_pointer_cast<TendermintEngine>(tendermintSealer->consensusEngine());
+    tendermintEngine->setIntervalBlockTime(g_BCOSConfig.c_intervalBlockTime);
+    tendermintEngine->setStorage(m_dbInitializer->storage());
+    tendermintEngine->setOmitEmptyBlock(g_BCOSConfig.c_omitEmptyBlock);
+    tendermintEngine->setMaxTTL(m_param->mutableConsensusParam().maxTTL);
+    return tendermintSealer;
+}
+
 std::shared_ptr<Sealer> Ledger::createRaftSealer()
 {
     Ledger_LOG(DEBUG) << LOG_BADGE("initLedger") << LOG_BADGE("createRaftSealer");
@@ -409,6 +439,17 @@ bool Ledger::consensusInitFactory()
     {
         /// create RaftSealer
         m_sealer = createRaftSealer();
+        if (!m_sealer)
+        {
+            return false;
+        }
+        return true;
+    }
+
+    if (dev::stringCmpIgnoreCase(m_param->mutableConsensusParam().consensusType, "tendermint") == 0)
+    {
+        /// create TendermintSealer
+        m_sealer = createTendermintSealer();
         if (!m_sealer)
         {
             return false;

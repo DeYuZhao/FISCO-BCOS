@@ -8,5 +8,8 @@ include_directories(./pbft)
 aux_source_directory(./raft SRC_LIST)
 include_directories(./raft)
 
+aux_source_directory(./tendermint SRC_LIST)
+include_directories(./tendermint)
+
 add_library(consensus ${SRC_LIST} ${HEADERS})
 target_link_libraries(consensus PUBLIC sync blockverifier p2p security)

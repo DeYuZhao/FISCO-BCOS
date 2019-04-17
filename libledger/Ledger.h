@@ -144,6 +144,8 @@ protected:
 private:
     /// create PBFTConsensus
     std::shared_ptr<dev::consensus::Sealer> createPBFTSealer();
+    /// create TendermintConsensus
+    std::shared_ptr<dev::consensus::Sealer> createTendermintSealer();
     /// create RaftConsensus
     std::shared_ptr<dev::consensus::Sealer> createRaftSealer();
     /// init configurations
