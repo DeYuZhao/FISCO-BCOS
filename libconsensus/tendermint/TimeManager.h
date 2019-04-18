@@ -12,7 +12,7 @@ namespace dev
 {
 namespace consensus
 {
-struct TimeManager
+struct TimeManage
 {
     /// last execution finish time, only one will be used at last
     /// the finish time of executing tx by leader

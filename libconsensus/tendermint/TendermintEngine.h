@@ -26,11 +26,11 @@ namespace dev
 {
 namespace consensus
 {
-enum CheckResult
+enum CheckValid
 {
-    VALID = 0,
-    INVALID = 1,
-    FUTURE = 2
+    T_VALID = 0,
+    T_INVALID = 1,
+    T_FUTURE = 2
 };
 using TendermintMsgQueue = dev::concurrent_queue<TendermintMsgPacket>;
 
@@ -166,7 +166,7 @@ protected:
         ConsensusEngineBase::checkBlockValid(block);
         checkSealerList(block);
     }
-    bool needOmit(Sealing const& sealing);
+//    bool needOmit(Sealing const& sealing);
 
     void getAllNodesViewStatus(json_spirit::Array& status);
 
@@ -177,8 +177,8 @@ protected:
                       unsigned const& ttl = 0);
 
 //    void sendViewChangeMsg(dev::network::NodeID const& nodeId);
-    bool sendMsg(dev::network::NodeID const& nodeId, unsigned const& packetType,
-                 std::string const& key, bytesConstRef data, unsigned const& ttl = 1);
+//    bool sendMsg(dev::network::NodeID const& nodeId, unsigned const& packetType,
+//                 std::string const& key, bytesConstRef data, unsigned const& ttl = 1);
     /// 1. generate and broadcast signReq according to given prepareReq
     /// 2. add the generated signReq into the cache
     bool broadcastVoteReq(ProposeReq const& req);
@@ -335,7 +335,7 @@ protected:
     }
 
     /// check the specified prepareReq is valid or not
-    CheckResult isValidPropose(ProposeReq const& req, std::ostringstream& oss) const;
+    CheckValid isValidPropose(ProposeReq const& req, std::ostringstream& oss) const;
 
     /**
      * @brief: common check process when handle SignReq and CommitReq
@@ -353,7 +353,7 @@ protected:
      *  3. CheckResult::VALID: the request is valid
      */
     template <class T>
-    inline CheckResult checkReq(T const& req, std::ostringstream& oss) const
+    inline CheckValid checkReq(T const& req, std::ostringstream& oss) const
     {
         if (m_reqCache->proposeCache().block_hash != req.block_hash)
         {
@@ -370,16 +370,16 @@ protected:
                         << LOG_DESC("checkReq: Recv future request")
                         << LOG_KV("prepHash", m_reqCache->proposeCache().block_hash.abridged())
                         << LOG_KV("INFO", oss.str());
-                return CheckResult::FUTURE;
+                return CheckValid::T_FUTURE;
             }
-            return CheckResult::INVALID;
+            return CheckValid::T_INVALID;
         }
         /// check the sealer of this request
         if (req.idx == nodeIdx())
         {
             TENDERMINTENGINE_LOG(TRACE) << LOG_DESC("checkReq: Recv own req")
                                   << LOG_KV("INFO", oss.str());
-            return CheckResult::INVALID;
+            return CheckValid::T_INVALID;
         }
         /// check view
 //        if (m_reqCache->proposeCache().view != req.view)
@@ -395,19 +395,19 @@ protected:
             TENDERMINTENGINE_LOG(TRACE) << LOG_DESC("checkReq: Recv req with unconsistent round")
                                         << LOG_KV("prepRound", m_reqCache->proposeCache().round)
                                         << LOG_KV("round", req.round) << LOG_KV("INFO", oss.str());
-            return CheckResult::INVALID;
+            return CheckValid::T_INVALID;
         }
         if (!checkSign(req))
         {
             TENDERMINTENGINE_LOG(TRACE) << LOG_DESC("checkReq:  invalid sign")
                                   << LOG_KV("INFO", oss.str());
-            return CheckResult::INVALID;
+            return CheckValid::T_INVALID;
         }
-        return CheckResult::VALID;
+        return CheckValid::T_VALID;
     }
 
-    CheckResult isValidVoteReq(PreVoteReq const& req, std::ostringstream& oss) const;
-    CheckResult isValidCommitReq(PreCommitReq const& req, std::ostringstream& oss) const;
+    CheckValid isValidVoteReq(PreVoteReq const& req, std::ostringstream& oss) const;
+    CheckValid isValidCommitReq(PreCommitReq const& req, std::ostringstream& oss) const;
 //    bool isValidViewChangeReq(
 //            ViewChangeReq const& req, IDXTYPE const& source, std::ostringstream& oss);
 
@@ -535,14 +535,14 @@ protected:
 
     std::shared_ptr<TendermintBroadcastCache> m_broadCastCache;
     std::shared_ptr<TendermintReqCache> m_reqCache;
-    TimeManager m_timeManager;
+    TimeManage m_timeManager;
     TendermintMsgQueue m_msgQueue;
     mutable Mutex m_mutex;
 
     std::condition_variable m_signalled;
     Mutex x_signalled;
 
-    std::function<void()> m_onViewChange;
+//    std::function<void()> m_onViewChange;
     std::function<void(dev::h256Hash const& filter)> m_onNotifyNextLeaderReset;
 
     /// for output time-out caused viewchange

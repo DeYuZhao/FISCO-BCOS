@@ -26,7 +26,7 @@ public:
             h512s const& _sealerList = h512s())
     : Sealer(_txPool, _blockChain, _blockSync)
     {
-        m_consensusEngine = std::make_shared<TendermintSealer>(_service, _txPool, _blockChain, _blockSync,
+        m_consensusEngine = std::make_shared<TendermintEngine>(_service, _txPool, _blockChain, _blockSync,
                 _blockVerifier, _protocolId, _baseDir, _key_pair, _sealerList);
         m_tendermintEngine = std::dynamic_pointer_cast<TendermintEngine>(m_consensusEngine);
         /// called by viewchange procedure to reset block when timeout
