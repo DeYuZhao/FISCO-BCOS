@@ -141,7 +141,6 @@ struct TendermintMsg
             IDXTYPE const& _idx, h256 const _blockHash)
     {
         height = _height;
-//        round = _round;
         view = _view;
         idx = _idx;
         timestamp = u256(utcTime());
@@ -196,7 +195,6 @@ struct TendermintMsg
         try
         {
             height = rlp[field = 0].toInt<int64_t>();
-//            round = rlp[field = 1].toInt<int64_t >();
             view = rlp[field = 1].toInt<VIEWTYPE>();
             idx = rlp[field = 2].toInt<IDXTYPE>();
             timestamp = rlp[field = 3].toInt<u256>();
@@ -216,7 +214,6 @@ struct TendermintMsg
     void clear()
     {
         height = -1;
-//        round = -1;
         view = MAXVIEW;
         idx = MAXIDX;
         timestamp = Invalid256;
@@ -275,7 +272,6 @@ struct ProposeReq : public TendermintMsg
     ProposeReq(ProposeReq const& req, KeyPair const& keyPair, VIEWTYPE const& _view, IDXTYPE const& _idx)
     {
         height = req.height;
-//        round = _round;
         view = _view;
         idx = _idx;
         timestamp = u256(utcTime());
@@ -297,7 +293,6 @@ struct ProposeReq : public TendermintMsg
     ProposeReq(dev::eth::Block const& blockStruct, KeyPair const& keyPair, VIEWTYPE const& _view, IDXTYPE const& _idx)
     {
         height = blockStruct.blockHeader().number();
-//        round = _round;
         view = _view;
         idx = _idx;
         timestamp = u256(utcTime());
@@ -318,7 +313,6 @@ struct ProposeReq : public TendermintMsg
     ProposeReq(ProposeReq const& req, Sealing const& sealing, KeyPair const& keyPair)
     {
         height = req.height;
-//        round = req.round;
         view = req.view;
         idx = req.idx;
         p_execContext = sealing.p_execContext;
@@ -378,7 +372,6 @@ struct PreVoteReq : public TendermintMsg
     PreVoteReq(ProposeReq const& req, KeyPair const& keyPair, IDXTYPE const& _idx)
     {
         height = req.height;
-//        round = req.round;
         view = req.view;
         idx = _idx;
         timestamp = u256(utcTime());
@@ -402,7 +395,6 @@ struct PreCommitReq : public TendermintMsg
     PreCommitReq(ProposeReq const& req, KeyPair const& keyPair, IDXTYPE const& _idx)
     {
         height = req.height;
-//        round = req.round;
         view = req.view;
         idx = _idx;
         timestamp = u256(utcTime());

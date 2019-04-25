@@ -20,28 +20,28 @@ class TendermintReqCache : public std::enable_shared_from_this<TendermintReqCach
 {
 public:
     TendermintReqCache(dev::PROTOCOL_ID const& protocol) : m_protocolId(protocol)
-    {
-        m_groupId = dev::eth::getGroupAndProtocol(m_protocolId).first;
-    }
+            {
+                    m_groupId = dev::eth::getGroupAndProtocol(m_protocolId).first;
+            }
 
-    virtual ~TendermintReqCache() { m_futureProposeCache.clear(); }
+    virtual ~TendermintReqCache() { m_futurePrepareCache.clear(); }
     /// specified prepareRequest exists in raw-prepare-cache or not?
     /// @return true : the prepare request exists in the  raw-prepare-cache
     /// @return false : the prepare request doesn't exist in the  raw-prepare-cache
     inline bool isExistPrepare(ProposeReq const& req)
     {
-        return m_rawProposeCache.block_hash == req.block_hash;
+        return m_rawPrepareCache.block_hash == req.block_hash;
     }
     /// specified SignReq exists in the sign-cache or not?
     inline bool isExistSign(PreVoteReq const& req)
     {
-        return cacheExists(m_preVoteCache, req.block_hash, req.sig.hex());
+        return cacheExists(m_signCache, req.block_hash, req.sig.hex());
     }
 
     /// specified commitReq exists in the commit-cache or not?
     inline bool isExistCommit(PreCommitReq const& req)
     {
-        return cacheExists(m_preCommitCache, req.block_hash, req.sig.hex());
+        return cacheExists(m_commitCache, req.block_hash, req.sig.hex());
     }
 
     /// specified viewchangeReq exists in the viewchang-cache or not?
@@ -53,12 +53,12 @@ public:
     /// get the size of the cached sign requests according to given block hash
     inline size_t getSigCacheSize(h256 const& blockHash) const
     {
-        return getSizeFromCache(blockHash, m_preVoteCache);
+        return getSizeFromCache(blockHash, m_signCache);
     }
     /// get the size of the cached commit requests according to given block hash
     inline size_t getCommitCacheSize(h256 const& blockHash) const
     {
-        return getSizeFromCache(blockHash, m_preCommitCache);
+        return getSizeFromCache(blockHash, m_commitCache);
     }
     /// get the size of cached viewchange requests according to given view
     inline size_t getViewChangeSize(VIEWTYPE const& toView) const
@@ -77,15 +77,15 @@ public:
         return 0;
     }
 
-    inline ProposeReq const& rawProposeCache() { return m_rawProposeCache; }
-    inline ProposeReq const& proposeCache() { return m_proposeCache; }
-    inline ProposeReq const& committedProposeCache() { return m_committedProposeCache; }
-    ProposeReq* mutableCommittedProposeCache() { return &m_committedProposeCache; }
+    inline ProposeReq const& rawPrepareCache() { return m_rawPrepareCache; }
+    inline ProposeReq const& prepareCache() { return m_prepareCache; }
+    inline ProposeReq const& committedPrepareCache() { return m_committedPrepareCache; }
+    ProposeReq* mutableCommittedPrepareCache() { return &m_committedPrepareCache; }
     /// get the future prepare according to specified block hash
-    inline std::shared_ptr<ProposeReq> futureProposeCache(uint64_t const& blockNumber)
+    inline std::shared_ptr<ProposeReq> futurePrepareCache(uint64_t const& blockNumber)
     {
-        auto it = m_futureProposeCache.find(blockNumber);
-        if (it != m_futureProposeCache.end())
+        auto it = m_futurePrepareCache.find(blockNumber);
+        if (it != m_futurePrepareCache.end())
         {
             return it->second;
         }
@@ -93,33 +93,30 @@ public:
     }
     /// add specified raw-prepare-request into the raw-prepare-cache
     /// reset the prepare-cache
-    inline void addRawPropose(ProposeReq const& req)
+    inline void addRawPrepare(ProposeReq const& req)
     {
-        m_rawProposeCache = req;
-        TENDERMINTReqCache_LOG(DEBUG) << LOG_DESC("addRawPropose") << LOG_KV("height", req.height)
+        m_rawPrepareCache = req;
+        TENDERMINTReqCache_LOG(DEBUG) << LOG_DESC("addRawPrepare") << LOG_KV("height", req.height)
                                 << LOG_KV("reqIdx", req.idx)
                                 << LOG_KV("hash", req.block_hash.abridged());
-        m_proposeCache = ProposeReq();
+        m_prepareCache = ProposeReq();
     }
 
     /// add prepare request to prepare-cache
     /// remove cached request with the same block_hash but inconsistent view compaired with the
     /// specified prepare-request from the sign-cache and commit-cache
-    inline void addProposeReq(ProposeReq const& req)
+    inline void addPrepareReq(ProposeReq const& req)
     {
-        m_proposeCache = req;
+        m_prepareCache = req;
         removeInvalidSignCache(req.block_hash, req.view);
         removeInvalidCommitCache(req.block_hash, req.view);
     }
     /// add specified signReq to the sign-cache
-    inline void addVoteReq(PreVoteReq const& req)
-    {
-        m_preVoteCache[req.block_hash][req.sig.hex()] = req;
-    }
+    inline void addSignReq(PreVoteReq const& req) { m_signCache[req.block_hash][req.sig.hex()] = req; }
     /// add specified commit cache to the commit-cache
     inline void addCommitReq(PreCommitReq const& req)
     {
-        m_preCommitCache[req.block_hash][req.sig.hex()] = req;
+        m_commitCache[req.block_hash][req.sig.hex()] = req;
     }
     /// add specified viewchange cache to the viewchange-cache
     inline void addViewChangeReq(RoundChangeReq const& req)
@@ -155,23 +152,23 @@ public:
     }
 
     /// add future-prepare cache
-    inline void addFutureProposeCache(ProposeReq const& req)
+    inline void addFuturePrepareCache(ProposeReq const& req)
     {
-        auto it = m_futureProposeCache.find(req.height);
-        if (it == m_futureProposeCache.end())
+        auto it = m_futurePrepareCache.find(req.height);
+        if (it == m_futurePrepareCache.end())
         {
             TENDERMINTReqCache_LOG(INFO)
                     << LOG_DESC("addFuturePrepareCache") << LOG_KV("height", req.height)
                     << LOG_KV("reqIdx", req.idx) << LOG_KV("hash", req.block_hash.abridged());
-            m_futureProposeCache[req.height] = std::make_shared<ProposeReq>(std::move(req));
+            m_futurePrepareCache[req.height] = std::make_shared<ProposeReq>(std::move(req));
         }
     }
 
     /// get the future prepare cache size
-    inline size_t futureProposeCacheSize() { return m_futureProposeCache.size(); }
+    inline size_t futurePrepareCacheSize() { return m_futurePrepareCache.size(); }
 
     /// update m_committedPrepareCache to m_rawPrepareCache before broadcast the commit-request
-    inline void updateCommittedPropose() { m_committedProposeCache = m_rawProposeCache; }
+    inline void updateCommittedPrepare() { m_committedPrepareCache = m_rawPrepareCache; }
     /// obtain the sig-list from m_commitCache, and append the sig-list to given block
     bool generateAndSetSigList(dev::eth::Block& block, const IDXTYPE& minSigSize);
     ///  determine can trigger viewchange or not
@@ -182,11 +179,11 @@ public:
     /// trigger viewchange
     inline void triggerViewChange(VIEWTYPE const& curView)
     {
-        m_rawProposeCache.clear();
-        m_proposeCache.clear();
-        m_preVoteCache.clear();
-        m_preCommitCache.clear();
-        m_futureProposeCache.clear();
+        m_rawPrepareCache.clear();
+        m_prepareCache.clear();
+        m_signCache.clear();
+        m_commitCache.clear();
+        m_futurePrepareCache.clear();
         removeInvalidViewChange(curView);
     }
     /// delete requests cached in m_signCache, m_commitCache and m_prepareCache according to hash
@@ -196,8 +193,8 @@ public:
     void delCache(h256 const& hash);
     inline void collectGarbage(dev::eth::BlockHeader const& highestBlockHeader)
     {
-        removeInvalidEntryFromCache(highestBlockHeader, m_preVoteCache);
-        removeInvalidEntryFromCache(highestBlockHeader, m_preCommitCache);
+        removeInvalidEntryFromCache(highestBlockHeader, m_signCache);
+        removeInvalidEntryFromCache(highestBlockHeader, m_commitCache);
     }
     /// remove invalid view-change requests according to view and the current block header
     void removeInvalidViewChange(VIEWTYPE const& view, dev::eth::BlockHeader const& highestBlock);
@@ -207,34 +204,34 @@ public:
     }
     inline void clearAllExceptCommitCache()
     {
-        m_proposeCache.clear();
-        m_preVoteCache.clear();
+        m_prepareCache.clear();
+        m_signCache.clear();
         m_recvViewChangeReq.clear();
     }
 
     inline void clearAll()
     {
-        m_rawProposeCache.clear();
+        m_rawPrepareCache.clear();
         clearAllExceptCommitCache();
-        m_preCommitCache.clear();
+        m_commitCache.clear();
     }
 
     /// erase specified future request from the future prepare cache
     void eraseHandledFutureReq(uint64_t const& blockNumber)
     {
-        if (m_futureProposeCache.find(blockNumber) != m_futureProposeCache.end())
+        if (m_futurePrepareCache.find(blockNumber) != m_futurePrepareCache.end())
         {
-            m_futureProposeCache.erase(blockNumber);
+            m_futurePrepareCache.erase(blockNumber);
         }
     }
     /// complemented functions for UTs
-    std::unordered_map<h256, std::unordered_map<std::string, PreVoteReq>>& mutableVoteCache()
+    std::unordered_map<h256, std::unordered_map<std::string, PreVoteReq>>& mutableSignCache()
     {
-        return m_preVoteCache;
+        return m_signCache;
     }
     std::unordered_map<h256, std::unordered_map<std::string, PreCommitReq>>& mutableCommitCache()
     {
-        return m_preCommitCache;
+        return m_commitCache;
     }
     std::unordered_map<VIEWTYPE, std::unordered_map<IDXTYPE, RoundChangeReq>>&
     mutableViewChangeCache()
@@ -329,20 +326,20 @@ private:
     dev::PROTOCOL_ID m_protocolId;
     dev::GROUP_ID m_groupId;
     /// cache for prepare request
-    ProposeReq m_proposeCache = ProposeReq();
+    ProposeReq m_prepareCache = ProposeReq();
     /// cache for raw prepare request
-    ProposeReq m_rawProposeCache;
+    ProposeReq m_rawPrepareCache;
     /// cache for signReq(maps between hash and sign requests)
-    std::unordered_map<h256, std::unordered_map<std::string, PreVoteReq>> m_preVoteCache;
+    std::unordered_map<h256, std::unordered_map<std::string, PreVoteReq>> m_signCache;
     /// cache for received-viewChange requests(maps between view and view change requests)
     std::unordered_map<VIEWTYPE, std::unordered_map<IDXTYPE, RoundChangeReq>> m_recvViewChangeReq;
     /// cache for commited requests(maps between hash and commited requests)
-    std::unordered_map<h256, std::unordered_map<std::string, PreCommitReq>> m_preCommitCache;
+    std::unordered_map<h256, std::unordered_map<std::string, PreCommitReq>> m_commitCache;
     /// cache for prepare request need to be backup and saved
-    ProposeReq m_committedProposeCache;
+    ProposeReq m_committedPrepareCache;
     /// cache for the future prepare cache
     /// key: block hash, value: the cached future prepeare
-    std::unordered_map<uint64_t, std::shared_ptr<ProposeReq>> m_futureProposeCache;
+    std::unordered_map<uint64_t, std::shared_ptr<ProposeReq>> m_futurePrepareCache;
 };
 }  // namespace consensus
 }  // namespace dev

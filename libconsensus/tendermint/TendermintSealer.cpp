@@ -37,7 +37,7 @@ void TendermintSealer::handleBlock()
                          << LOG_KV("tx", m_sealing.block.getTransactionSize())
                          << LOG_KV("nodeIdx", m_tendermintEngine->nodeIdx())
                          << LOG_KV("hash", m_sealing.block.header().hash().abridged());
-    bool succ = m_tendermintEngine->generatePropose(m_sealing.block);
+    bool succ = m_tendermintEngine->generatePrepare(m_sealing.block);
     if (!succ)
     {
         resetSealingBlock();
@@ -61,23 +61,21 @@ void TendermintSealer::setBlock()
 }
 
 /**
-* @brief: this node can generate block or not
-* @return true: this node can generate block
-* @return false: this node can't generate block
-*/
+ * @brief: this node can generate block or not
+ * @return true: this node can generate block
+ * @return false: this node can't generate block
+ */
 bool TendermintSealer::shouldSeal()
 {
     return Sealer::shouldSeal() && m_tendermintEngine->shouldSeal();
 }
 void TendermintSealer::start()
 {
-    TENDERMINTSEALER_LOG(DEBUG) << LOG_DESC("Start TendermintSealer");
     m_tendermintEngine->start();
     Sealer::start();
 }
 void TendermintSealer::stop()
 {
-    TENDERMINTSEALER_LOG(DEBUG) << LOG_DESC("Stop TendermintSealer");
     Sealer::stop();
     m_tendermintEngine->stop();
 }

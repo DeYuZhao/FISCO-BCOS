@@ -34,10 +34,10 @@ public:
         switch (type)
         {
             case ProposeReqPacket:
-                insertMessage(x_knownPropose, m_knownPropose, c_knownPropose, key);
+                insertMessage(x_knownPrepare, m_knownPrepare, c_knownPrepare, key);
                 return true;
             case PreVoteReqPacket:
-                insertMessage(x_knownVote, m_knownVote, c_knownVote, key);
+                insertMessage(x_knownSign, m_knownSign, c_knownSign, key);
                 return true;
             case PreCommitReqPacket:
                 insertMessage(x_knownCommit, m_knownCommit, c_knownCommit, key);
@@ -64,9 +64,9 @@ public:
         switch (type)
         {
             case ProposeReqPacket:
-                return exists(x_knownPropose, m_knownPropose, key);
+                return exists(x_knownPrepare, m_knownPrepare, key);
             case PreVoteReqPacket:
-                return exists(x_knownVote, m_knownVote, key);
+                return exists(x_knownSign, m_knownSign, key);
             case PreCommitReqPacket:
                 return exists(x_knownCommit, m_knownCommit, key);
             case RoundChangeReqPacket:
@@ -99,10 +99,10 @@ public:
     /// clear all the cache
     inline void clearAll()
     {
-        DEV_GUARDED(x_knownPropose)
-            m_knownPropose.clear();
-        DEV_GUARDED(x_knownVote)
-            m_knownVote.clear();
+        DEV_GUARDED(x_knownPrepare)
+            m_knownPrepare.clear();
+        DEV_GUARDED(x_knownSign)
+            m_knownSign.clear();
         DEV_GUARDED(x_knownCommit)
             m_knownCommit.clear();
         DEV_GUARDED(x_knownViewChange)
@@ -110,14 +110,14 @@ public:
     }
 
 private:
-    /// mutex for m_knownPropose
-    Mutex x_knownPropose;
-    /// cache for the propose packet
-    QueueSet<std::string> m_knownPropose;
-    /// mutex for m_knownVote
-    Mutex x_knownVote;
-    /// cache for the vote packet
-    QueueSet<std::string> m_knownVote;
+    /// mutex for m_knownPrepare
+    Mutex x_knownPrepare;
+    /// cache for the prepare packet
+    QueueSet<std::string> m_knownPrepare;
+    /// mutex for m_knownSign
+    Mutex x_knownSign;
+    /// cache for the sign packet
+    QueueSet<std::string> m_knownSign;
     /// mutex for m_knownCommit
     Mutex x_knownCommit;
     /// cache for the commit packet
@@ -127,61 +127,61 @@ private:
     /// cache for the viewchange packet
     QueueSet<std::string> m_knownViewChange;
 
-    /// the limit size for propose packet cache
-    static const unsigned c_knownPropose = 1024;
-    /// the limit size for vote packet cache
-    static const unsigned c_knownVote = 1024;
+    /// the limit size for prepare packet cache
+    static const unsigned c_knownPrepare = 1024;
+    /// the limit size for sign packet cache
+    static const unsigned c_knownSign = 1024;
     /// the limit size for commit packet cache
     static const unsigned c_knownCommit = 1024;
     /// the limit size for viewchange packet cache
     static const unsigned c_knownViewChange = 1024;
 };
 
-class TendermintBroadcastCache
-{
-public:
-    /**
-     * @brief : insert key into the queue according to node id and packet type
-     *
-     * @param nodeId : node id
-     * @param type: packet type
-     * @param key: key (mainly the signature of specified broadcast packet)
-     * @return true: insert success
-     * @return false: insert failed
-     */
-    inline bool insertKey(h512 const& nodeId, unsigned const& type, std::string const& key)
+    class TendermintBroadcastCache
     {
-        if (!m_broadCastKeyCache.count(nodeId))
-            m_broadCastKeyCache[nodeId] = std::make_shared<TendermintMsgCache>();
-        return m_broadCastKeyCache[nodeId]->insertByPacketType(type, key);
-    }
+    public:
+        /**
+         * @brief : insert key into the queue according to node id and packet type
+         *
+         * @param nodeId : node id
+         * @param type: packet type
+         * @param key: key (mainly the signature of specified broadcast packet)
+         * @return true: insert success
+         * @return false: insert failed
+         */
+        inline bool insertKey(h512 const& nodeId, unsigned const& type, std::string const& key)
+        {
+            if (!m_broadCastKeyCache.count(nodeId))
+                m_broadCastKeyCache[nodeId] = std::make_shared<TendermintMsgCache>();
+            return m_broadCastKeyCache[nodeId]->insertByPacketType(type, key);
+        }
 
-    /**
-     * @brief: determine whether the key of given packet type existed in the cache of given node id
-     *
-     * @param nodeId : node id
-     * @param type: packet type
-     * @param key: mainly the signature of specified broadcast packe
-     * @return true : the key exists in the cache
-     * @return false: the key doesn't exist in the cache
-     */
-    inline bool keyExists(h512 const& nodeId, unsigned const& type, std::string const& key)
-    {
-        if (!m_broadCastKeyCache.count(nodeId))
-            return false;
-        return m_broadCastKeyCache[nodeId]->exists(type, key);
-    }
+        /**
+         * @brief: determine whether the key of given packet type existed in the cache of given node id
+         *
+         * @param nodeId : node id
+         * @param type: packet type
+         * @param key: mainly the signature of specified broadcast packe
+         * @return true : the key exists in the cache
+         * @return false: the key doesn't exist in the cache
+         */
+        inline bool keyExists(h512 const& nodeId, unsigned const& type, std::string const& key)
+        {
+            if (!m_broadCastKeyCache.count(nodeId))
+                return false;
+            return m_broadCastKeyCache[nodeId]->exists(type, key);
+        }
 
-    /// clear all caches
-    inline void clearAll()
-    {
-        for (auto& item : m_broadCastKeyCache)
-            item.second->clearAll();
-    }
+        /// clear all caches
+        inline void clearAll()
+        {
+            for (auto& item : m_broadCastKeyCache)
+                item.second->clearAll();
+        }
 
-private:
-    /// maps between node id and its broadcast cache
-    std::unordered_map<h512, std::shared_ptr<TendermintMsgCache>> m_broadCastKeyCache;
+    private:
+        /// maps between node id and its broadcast cache
+        std::unordered_map<h512, std::shared_ptr<TendermintMsgCache>> m_broadCastKeyCache;
 };
 }  // namespace consensus
 }  // namespace dev

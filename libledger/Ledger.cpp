@@ -181,7 +181,7 @@ void Ledger::initConsensusConfig(ptree const& pt)
     m_param->mutableConsensusParam().maxElectTime =
         pt.get<uint64_t>("consensus.max_elect_time", 2000);
 
-    Ledger_LOG(DEBUG) << LOG_BADGE("initConsensusConfig")
+    Ledger_LOG(INFO) << LOG_BADGE("initConsensusConfig")
                       << LOG_KV("type", m_param->mutableConsensusParam().consensusType)
                       << LOG_KV("maxTxNum", m_param->mutableConsensusParam().maxTransactions);
     std::stringstream nodeListMark;
@@ -434,7 +434,7 @@ std::shared_ptr<Sealer> Ledger::createRaftSealer()
 /// init consensus
 bool Ledger::consensusInitFactory()
 {
-    Ledger_LOG(DEBUG) << LOG_BADGE("initLedger") << LOG_BADGE("consensusInitFactory");
+    Ledger_LOG(INFO) << LOG_BADGE("initLedger") << LOG_BADGE("consensusInitFactory");
     if (dev::stringCmpIgnoreCase(m_param->mutableConsensusParam().consensusType, "raft") == 0)
     {
         /// create RaftSealer

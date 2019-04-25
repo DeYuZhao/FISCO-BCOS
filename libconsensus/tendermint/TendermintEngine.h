@@ -37,29 +37,27 @@ using TendermintMsgQueue = dev::concurrent_queue<TendermintMsgPacket>;
 class TendermintEngine : public ConsensusEngineBase
 {
 public:
-    virtual ~TendermintEngine(){
-        stop();
-    }
+    virtual ~TendermintEngine() { stop(); }
     TendermintEngine(std::shared_ptr<dev::p2p::P2PInterface> _service,
-        std::shared_ptr<dev::txpool::TxPoolInterface> _txPool,
-        std::shared_ptr<dev::blockchain::BlockChainInterface> _blockChain,
-        std::shared_ptr<dev::sync::SyncInterface> _blockSync,
-        std::shared_ptr<dev::blockverifier::BlockVerifierInterface> _blockVerifier,
-        dev::PROTOCOL_ID const& _protocolId, std::string const& _baseDir, KeyPair const& _keyPair,
-        h512s const& _sealerList = h512s())
+    std::shared_ptr<dev::txpool::TxPoolInterface> _txPool,
+            std::shared_ptr<dev::blockchain::BlockChainInterface> _blockChain,
+    std::shared_ptr<dev::sync::SyncInterface> _blockSync,
+            std::shared_ptr<dev::blockverifier::BlockVerifierInterface> _blockVerifier,
+    dev::PROTOCOL_ID const& _protocolId, std::string const& _baseDir, KeyPair const& _keyPair,
+            h512s const& _sealerList = h512s())
     : ConsensusEngineBase(_service, _txPool, _blockChain, _blockSync, _blockVerifier, _protocolId,
             _keyPair, _sealerList),
-            m_baseDir(_baseDir)
-    {
-        TENDERMINTENGINE_LOG(INFO) << LOG_DESC("Register handler for TENDERMINTEngine");
-        m_service->registerHandlerByProtoclID(
-            m_protocolId, boost::bind(&TendermintEngine::onRecvTendermintMessage, this, _1, _2, _3));
-        m_broadCastCache = std::make_shared<TendermintBroadcastCache>();
-        m_reqCache = std::make_shared<TendermintReqCache>(m_protocolId);
+    m_baseDir(_baseDir)
+            {
+                    TENDERMINTENGINE_LOG(INFO) << LOG_DESC("Register handler for PBFTEngine");
+            m_service->registerHandlerByProtoclID(
+            m_protocolId, boost::bind(&TendermintEngine::onRecvPBFTMessage, this, _1, _2, _3));
+            m_broadCastCache = std::make_shared<TendermintBroadcastCache>();
+            m_reqCache = std::make_shared<TendermintReqCache>(m_protocolId);
 
-        /// register checkSealerList to blockSync for check SealerList
-        m_blockSync->registerConsensusVerifyHandler(boost::bind(&TendermintEngine::checkBlock, this, _1));
-    }
+            /// register checkSealerList to blockSync for check SealerList
+            m_blockSync->registerConsensusVerifyHandler(boost::bind(&TendermintEngine::checkBlock, this, _1));
+            }
 
     void setBaseDir(std::string const& _path) { m_baseDir = _path; }
 
@@ -96,6 +94,7 @@ public:
         /// the block is sealed by the current leader
         return (utcTime() - m_timeManager.m_lastConsensusTime) >= m_timeManager.m_intervalBlockTime;
     }
+
     /// in case of the next leader packeted the number of maxTransNum transactions before the last
     /// block is consensused
     /// when sealing for the next leader,  return true only if the last block has been consensused
@@ -118,11 +117,11 @@ public:
         }
         return true;
     }
-    void rehandleCommitedProposeCache(ProposeReq const& req);
+    void rehandleCommitedPrepareCache(ProposeReq const& req);
     bool shouldSeal();
-    /// broadcast propose message
-    bool generatePropose(dev::eth::Block const& block);
-    /// update the context of Tendermint after commit a block into the block-chain
+    /// broadcast prepare message
+    bool generatePrepare(dev::eth::Block const& block);
+    /// update the context of PBFT after commit a block into the block-chain
     void reportBlock(dev::eth::Block const& block) override;
     void onViewChange(std::function<void()> const& _f)
     {
@@ -182,24 +181,24 @@ protected:
                  std::string const& key, bytesConstRef data, unsigned const& ttl = 1);
     /// 1. generate and broadcast signReq according to given prepareReq
     /// 2. add the generated signReq into the cache
-    bool broadcastVoteReq(ProposeReq const& req);
+    bool broadcastSignReq(ProposeReq const& req);
 
     /// broadcast commit message
     bool broadcastCommitReq(ProposeReq const& req);
     /// broadcast view change message
-//    bool shouldBroadcastViewChange();
+    bool shouldBroadcastViewChange();
     bool broadcastViewChangeReq();
     /// handler called when receiving data from the network
-    void onRecvTendermintMessage(dev::p2p::NetworkException exception,
+    void onRecvPBFTMessage(dev::p2p::NetworkException exception,
                            std::shared_ptr<dev::p2p::P2PSession> session, dev::p2p::P2PMessage::Ptr message);
-    bool handleProposeMsg(ProposeReq const& propose_req, std::string const& endpoint = "self");
+    bool handlePrepareMsg(ProposeReq const& prepare_req, std::string const& endpoint = "self");
     /// handler prepare messages
-    bool handleProposeMsg(ProposeReq& proposeReq, TendermintMsgPacket const& tendermintMsg);
+    bool handlePrepareMsg(ProposeReq& prepareReq, TendermintMsgPacket const& tendermintMsg);
     /// 1. decode the network-received PBFTMsgPacket to signReq
     /// 2. check the validation of the signReq
     /// add the signReq to the cache and
     /// heck the size of the collected signReq is over 2/3 or not
-    bool handleVoteMsg(PreVoteReq& signReq, TendermintMsgPacket const& tendermintMsg);
+    bool handleSignMsg(PreVoteReq& signReq, TendermintMsgPacket const& tendermintMsg);
     bool handleCommitMsg(PreCommitReq& commitReq, TendermintMsgPacket const& tendermintMsg);
     bool handleViewChangeMsg(RoundChangeReq& viewChangeReq, TendermintMsgPacket const& tendermintMsg);
     void handleMsg(TendermintMsgPacket const& tendermintMsg);
@@ -211,7 +210,7 @@ protected:
     void checkAndChangeView();
 
 protected:
-    void initTendermintEnv();
+    void initPBFTEnv(unsigned _view_timeout);
     /// recalculate m_nodeNum && m_f && m_cfgErr(must called after setSigList)
     void resetConfig() override;
     virtual void initBackupDB();
@@ -336,14 +335,14 @@ protected:
     }
 
     /// check the specified prepareReq is valid or not
-    CheckValid isValidPropose(ProposeReq const& req, std::ostringstream& oss) const;
+    CheckValid isValidPrepare(ProposeReq const& req, std::ostringstream& oss) const;
 
     /**
      * @brief: common check process when handle SignReq and CommitReq
      *         1. the request should be existed in prepare cache,
-     *            if the request is the future request, should add it to the propose cache
+     *            if the request is the future request, should add it to the prepare cache
      *         2. the sealer of the request shouldn't be the node-self
-     *         3. the round of the request must be equal to the view of the propose cache
+     *         3. the view of the request must be equal to the view of the prepare cache
      *         4. the signature of the request must be valid
      * @tparam T: the type of the request
      * @param req: the request should be checked
@@ -356,11 +355,11 @@ protected:
     template <class T>
     inline CheckValid checkReq(T const& req, std::ostringstream& oss) const
     {
-        if (m_reqCache->proposeCache().block_hash != req.block_hash)
+        if (m_reqCache->prepareCache().block_hash != req.block_hash)
         {
             TENDERMINTENGINE_LOG(TRACE) << LOG_DESC("checkReq: sign or commit Not exist in prepare cache")
                                   << LOG_KV("prepHash",
-                                            m_reqCache->proposeCache().block_hash.abridged())
+                                            m_reqCache->prepareCache().block_hash.abridged())
                                   << LOG_KV("hash", req.block_hash.abridged())
                                   << LOG_KV("INFO", oss.str());
             /// is future ?
@@ -369,9 +368,9 @@ protected:
             {
                 TENDERMINTENGINE_LOG(INFO)
                         << LOG_DESC("checkReq: Recv future request")
-                        << LOG_KV("prepHash", m_reqCache->proposeCache().block_hash.abridged())
+                        << LOG_KV("prepHash", m_reqCache->prepareCache().block_hash.abridged())
                         << LOG_KV("INFO", oss.str());
-                return CheckValid::T_FUTURE;
+                return CheckValid ::T_FUTURE;
             }
             return CheckValid::T_INVALID;
         }
@@ -380,34 +379,26 @@ protected:
         {
             TENDERMINTENGINE_LOG(TRACE) << LOG_DESC("checkReq: Recv own req")
                                   << LOG_KV("INFO", oss.str());
-            return CheckValid::T_INVALID;
+            return CheckValid ::T_INVALID;
         }
         /// check view
-        if (m_reqCache->proposeCache().view != req.view)
+        if (m_reqCache->prepareCache().view != req.view)
         {
             TENDERMINTENGINE_LOG(TRACE) << LOG_DESC("checkReq: Recv req with unconsistent view")
-                                  << LOG_KV("prepView", m_reqCache->proposeCache().view)
+                                  << LOG_KV("prepView", m_reqCache->prepareCache().view)
                                   << LOG_KV("view", req.view) << LOG_KV("INFO", oss.str());
             return CheckValid ::T_INVALID;
         }
-        /// check round
-//        if (m_reqCache->proposeCache().view != req.view)
-//        {
-//            TENDERMINTENGINE_LOG(TRACE) << LOG_DESC("checkReq: Recv req with unconsistent round")
-//                                        << LOG_KV("prepRound", m_reqCache->proposeCache().view)
-//                                        << LOG_KV("round", req.round) << LOG_KV("INFO", oss.str());
-//            return CheckValid::T_INVALID;
-//        }
         if (!checkSign(req))
         {
             TENDERMINTENGINE_LOG(TRACE) << LOG_DESC("checkReq:  invalid sign")
                                   << LOG_KV("INFO", oss.str());
-            return CheckValid::T_INVALID;
+            return CheckValid ::T_INVALID;
         }
-        return CheckValid::T_VALID;
+        return CheckValid ::T_VALID;
     }
 
-    CheckValid isValidVoteReq(PreVoteReq const& req, std::ostringstream& oss) const;
+    CheckValid isValidSignReq(PreVoteReq const& req, std::ostringstream& oss) const;
     CheckValid isValidCommitReq(PreCommitReq const& req, std::ostringstream& oss) const;
     bool isValidViewChangeReq(
             RoundChangeReq const& req, IDXTYPE const& source, std::ostringstream& oss);
@@ -439,7 +430,7 @@ protected:
     }
 
     template <typename T>
-    inline bool isFuturePropose(T const& req) const
+    inline bool isFuturePrepare(T const& req) const
     {
         if (req.height > m_consensusBlockNumber ||
             (req.height == m_consensusBlockNumber && req.view > m_view))
@@ -451,16 +442,16 @@ protected:
 
     inline bool isHashSavedAfterCommit(ProposeReq const& req) const
     {
-        if (req.height == m_reqCache->committedProposeCache().height &&
-            req.block_hash != m_reqCache->committedProposeCache().block_hash)
+        if (req.height == m_reqCache->committedPrepareCache().height &&
+            req.block_hash != m_reqCache->committedPrepareCache().block_hash)
         {
             /// TODO: remove these logs in the atomic functions
             TENDERMINTENGINE_LOG(DEBUG)
                     << LOG_DESC("isHashSavedAfterCommit: hasn't been cached after commit")
                     << LOG_KV("height", req.height)
-                    << LOG_KV("cacheHeight", m_reqCache->committedProposeCache().height)
+                    << LOG_KV("cacheHeight", m_reqCache->committedPrepareCache().height)
                     << LOG_KV("hash", req.block_hash.abridged())
-                    << LOG_KV("cacheHash", m_reqCache->committedProposeCache().block_hash.abridged());
+                    << LOG_KV("cacheHash", m_reqCache->committedPrepareCache().block_hash.abridged());
             return false;
         }
         return true;
@@ -489,15 +480,6 @@ protected:
         m_fastViewChange = true;
         m_signalled.notify_all();
     }
-
-//    void changeRoundForEmptyBlock()
-//    {
-//        m_timeManager.changeRound();
-//        m_timeManager.m_changeCycle = 0;
-//        m_fastViewChange = true;
-//        m_signalled.notify_all();
-//    }
-
     void notifySealing(dev::eth::Block const& block);
     virtual bool isDiskSpaceEnough(std::string const& path)
     {
@@ -510,16 +492,9 @@ protected:
         m_viewMap[idx] = view;
     }
 
-//    void updateRoundMap(IDXTYPE const& idx, int64_t const& round)
-//    {
-//        WriteGuard l(x_roundMap);
-//        m_roundMap[idx] = round;
-//    }
-
 protected:
     VIEWTYPE m_view = 0;
     VIEWTYPE m_toView = 0;
-    int64_t m_round = 0;
     std::string m_baseDir;
     bool m_leaderFailed = false;
     bool m_notifyNextLeaderSeal = false;
@@ -555,16 +530,6 @@ protected:
     /// map between nodeIdx to view
     mutable SharedMutex x_viewMap;
     std::map<IDXTYPE, VIEWTYPE> m_viewMap;
-
-    /// map between nodeIdx to round
-    mutable SharedMutex x_roundMap;
-    std::map<IDXTYPE, VIEWTYPE> m_roundMap;
-
-    /// Locked Block
-    bool m_lockedBlock = false;
-
-    mutable SharedMutex x_roundNodeNum;
-    IDXTYPE m_roundNodeNum = 0;
 };
 }
 }

@@ -42,13 +42,6 @@ struct TimeManage
         /// m_changeCycle = 0;
     }
 
-    inline void changeRound()
-    {
-        m_lastConsensusTime = 0;
-        m_lastSignTime = 0;
-    }
-
-
     inline void updateChangeCycle()
     {
         m_changeCycle = std::min(m_changeCycle + 1, (unsigned)kMaxChangeCycle);
