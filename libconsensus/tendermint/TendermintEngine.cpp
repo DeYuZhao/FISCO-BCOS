@@ -2,6 +2,7 @@
 // Created by 赵德宇 on 2019-04-03.
 //
 #include "TendermintEngine.h"
+#include <libconsensus/Sealer.h>
 #include <json_spirit/JsonSpiritHeaders.h>
 #include <libconfig/GlobalConfigure.h>
 #include <libdevcore/CommonJS.h>
@@ -21,7 +22,7 @@ namespace dev
 namespace consensus
 {
     const std::string TendermintEngine::c_backupKeyCommitted = "committed";
-    const std::string TendermintEngine::c_backupMsgDirName = "pbftMsgBackup";
+    const std::string TendermintEngine::c_backupMsgDirName = "tendermintMsgBackup";
 
     void TendermintEngine::start()
     {
@@ -40,7 +41,7 @@ namespace consensus
         initBackupDB();
         m_timeManager.initTimerManager(view_timeout);
         m_connectedNode = m_nodeNum;
-        TENDERMINTENGINE_LOG(INFO) << "[#PBFT init env successfully]";
+        TENDERMINTENGINE_LOG(INFO) << "[#Tendermint init env successfully]";
     }
 
     bool TendermintEngine::shouldSeal()
@@ -1207,23 +1208,38 @@ namespace consensus
 
     void TendermintEngine::checkAndChangeView()
     {
-        IDXTYPE count = m_reqCache->getViewChangeSize(m_toView);
-        if (count >= minValidNodes() - 1)
-        {
-            TENDERMINTENGINE_LOG(INFO) << LOG_DESC("checkAndChangeView: Reach consensus")
-                                 << LOG_KV("to_view", m_toView);
-            /// reach to consensue dure to fast view change
-            if (m_timeManager.m_lastSignTime == 0)
-            {
-                m_fastViewChange = false;
-            }
-            m_leaderFailed = false;
-            m_timeManager.m_lastConsensusTime = utcTime();
-            m_view = m_toView;
-            m_notifyNextLeaderSeal = false;
-            m_reqCache->triggerViewChange(m_view);
-            m_blockSync->noteSealingBlockNumber(m_blockChain->number());
-        }
+        Sealing sealing;
+        sealing.block.header().populateFromParent(m_blockChain->getBlockByNumber(m_blockChain->number())->header());
+        uint64_t parentTime = m_blockChain->getBlockByNumber(m_blockChain->number())->header().timestamp();
+        sealing.block.header().setTimestamp(std::max(parentTime + 1, utcTime()));
+        std::shared_ptr<dev::consensus::ConsensusInterface> m_consensusEngine;
+
+        BlockHeader& header = sealing.block.header();
+        header.setSealerList(m_sealerList);
+        header.setSealer(nodeIdx());
+        header.setLogBloom(LogBloom());
+        header.setGasUsed(u256(0));
+        std::vector<bytes> extra_data;
+        header.setExtraData(extra_data);
+        sealing.block.calTransactionRoot();
+        generatePrepare(sealing.block);
+//        IDXTYPE count = m_reqCache->getViewChangeSize(m_toView);
+//        if (count >= minValidNodes() - 1)
+//        {
+//            TENDERMINTENGINE_LOG(INFO) << LOG_DESC("checkAndChangeView: Reach consensus")
+//                                 << LOG_KV("to_view", m_toView);
+//            /// reach to consensue dure to fast view change
+//            if (m_timeManager.m_lastSignTime == 0)
+//            {
+//                m_fastViewChange = false;
+//            }
+//            m_leaderFailed = false;
+//            m_timeManager.m_lastConsensusTime = utcTime();
+//            m_view = m_toView;
+//            m_notifyNextLeaderSeal = false;
+//            m_reqCache->triggerViewChange(m_view);
+//            m_blockSync->noteSealingBlockNumber(m_blockChain->number());
+//        }
     }
 
 /// collect all caches
@@ -1266,10 +1282,10 @@ namespace consensus
                 m_timeManager.m_lastConsensusTime = utcTime();
                 flag = true;
                 m_reqCache->removeInvalidViewChange(m_toView, m_highestBlock);
-                if (!broadcastViewChangeReq())
-                {
-                    return;
-                }
+//                if (!broadcastViewChangeReq())
+//                {
+//                    return;
+//                }
                 checkAndChangeView();
                 TENDERMINTENGINE_LOG(DEBUG) << LOG_DESC("checkTimeout Succ") << LOG_KV("view", m_view)
                                       << LOG_KV("toView", m_toView) << LOG_KV("nodeIdx", nodeIdx())
@@ -1361,7 +1377,7 @@ namespace consensus
                 std::pair<bool, TendermintMsgPacket> ret = m_msgQueue.tryPop(c_PopWaitSeconds);
                 if (ret.first)
                 {
-                    TENDERMINTENGINE_LOG(TRACE)
+                    TENDERMINTENGINE_LOG(INFO)
                             << LOG_DESC("workLoop: handleMsg")
                             << LOG_KV("type", std::to_string(ret.second.packet_id))
                             << LOG_KV("fromIdx", ret.second.node_idx) << LOG_KV("nodeIdx", nodeIdx())
