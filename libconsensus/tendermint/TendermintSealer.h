@@ -30,7 +30,7 @@ public:
                 _blockVerifier, _protocolId, _baseDir, _key_pair, _sealerList);
         m_tendermintEngine = std::dynamic_pointer_cast<TendermintEngine>(m_consensusEngine);
         /// called by viewchange procedure to reset block when timeout
-//        m_tendermintEngine->onViewChange(boost::bind(&TendermintSealer::resetBlockForViewChange, this));
+        m_tendermintEngine->onViewChange(boost::bind(&TendermintSealer::resetBlockForViewChange, this));
         /// called by the next leader to reset block when it receives the prepare block
         m_tendermintEngine->onNotifyNextLeaderReset(
                 boost::bind(&TendermintSealer::resetBlockForNextLeader, this, _1));

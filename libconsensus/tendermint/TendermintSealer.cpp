@@ -71,11 +71,13 @@ bool TendermintSealer::shouldSeal()
 }
 void TendermintSealer::start()
 {
+    TENDERMINTSEALER_LOG(DEBUG) << LOG_DESC("Start TendermintSealer");
     m_tendermintEngine->start();
     Sealer::start();
 }
 void TendermintSealer::stop()
 {
+    TENDERMINTSEALER_LOG(DEBUG) << LOG_DESC("Stop TendermintSealer");
     Sealer::stop();
     m_tendermintEngine->stop();
 }

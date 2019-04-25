@@ -45,10 +45,10 @@ public:
     }
 
     /// specified viewchangeReq exists in the viewchang-cache or not?
-//    inline bool isExistViewChange(ViewChangeReq const& req)
-//    {
-//        return cacheExists(m_recvViewChangeReq, req.view, req.idx);
-//    }
+    inline bool isExistViewChange(RoundChangeReq const& req)
+    {
+        return cacheExists(m_recvViewChangeReq, req.view, req.idx);
+    }
 
     /// get the size of the cached sign requests according to given block hash
     inline size_t getSigCacheSize(h256 const& blockHash) const
@@ -61,10 +61,10 @@ public:
         return getSizeFromCache(blockHash, m_preCommitCache);
     }
     /// get the size of cached viewchange requests according to given view
-//    inline size_t getViewChangeSize(VIEWTYPE const& toView) const
-//    {
-//        return getSizeFromCache(toView, m_recvViewChangeReq);
-//    }
+    inline size_t getViewChangeSize(VIEWTYPE const& toView) const
+    {
+        return getSizeFromCache(toView, m_recvViewChangeReq);
+    }
 
     template <typename T, typename S>
     inline size_t getSizeFromCache(T const& key, S& cache) const
@@ -108,8 +108,8 @@ public:
     inline void addProposeReq(ProposeReq const& req)
     {
         m_proposeCache = req;
-        removeInvalidSignCache(req.block_hash, req.round);
-        removeInvalidCommitCache(req.block_hash, req.round);
+        removeInvalidSignCache(req.block_hash, req.view);
+        removeInvalidCommitCache(req.block_hash, req.view);
     }
     /// add specified signReq to the sign-cache
     inline void addVoteReq(PreVoteReq const& req)
@@ -122,31 +122,31 @@ public:
         m_preCommitCache[req.block_hash][req.sig.hex()] = req;
     }
     /// add specified viewchange cache to the viewchange-cache
-//    inline void addViewChangeReq(ViewChangeReq const& req)
-//    {
-//        auto it = m_recvViewChangeReq.find(req.view);
-//        if (it != m_recvViewChangeReq.end())
-//        {
-//            auto itv = it->second.find(req.idx);
-//            if (itv != it->second.end())
-//            {
-//                itv->second = req;
-//            }
-//            else
-//            {
-//                it->second.insert(std::make_pair(req.idx, req));
-//            }
-//        }
-//        else
-//        {
-//            std::unordered_map<IDXTYPE, ViewChangeReq> viewMap;
-//            viewMap.insert(std::make_pair(req.idx, req));
-//
-//            m_recvViewChangeReq.insert(std::make_pair(req.view, viewMap));
-//        }
-//
-//        // m_recvViewChangeReq[req.view][req.idx] = req;
-//    }
+    inline void addViewChangeReq(RoundChangeReq const& req)
+    {
+        auto it = m_recvViewChangeReq.find(req.view);
+        if (it != m_recvViewChangeReq.end())
+        {
+            auto itv = it->second.find(req.idx);
+            if (itv != it->second.end())
+            {
+                itv->second = req;
+            }
+            else
+            {
+                it->second.insert(std::make_pair(req.idx, req));
+            }
+        }
+        else
+        {
+            std::unordered_map<IDXTYPE, RoundChangeReq> viewMap;
+            viewMap.insert(std::make_pair(req.idx, req));
+
+            m_recvViewChangeReq.insert(std::make_pair(req.view, viewMap));
+        }
+
+        // m_recvViewChangeReq[req.view][req.idx] = req;
+    }
 
     template <typename T, typename S>
     inline void addReq(T const& req, S& cache)
@@ -175,20 +175,20 @@ public:
     /// obtain the sig-list from m_commitCache, and append the sig-list to given block
     bool generateAndSetSigList(dev::eth::Block& block, const IDXTYPE& minSigSize);
     ///  determine can trigger viewchange or not
-//    bool canTriggerViewChange(VIEWTYPE& minView, IDXTYPE const& minInvalidNodeNum,
-//                              VIEWTYPE const& toView, dev::eth::BlockHeader const& highestBlock,
-//                              int64_t const& consensusBlockNumber);
+    bool canTriggerViewChange(VIEWTYPE& minView, IDXTYPE const& minInvalidNodeNum,
+                              VIEWTYPE const& toView, dev::eth::BlockHeader const& highestBlock,
+                              int64_t const& consensusBlockNumber);
 
     /// trigger viewchange
-//    inline void triggerViewChange(VIEWTYPE const& curView)
-//    {
-//        m_rawProposeCache.clear();
-//        m_proposeCache.clear();
-//        m_preVoteCache.clear();
-//        m_preCommitCache.clear();
-//        m_futureProposeCache.clear();
-//        removeInvalidViewChange(curView);
-//    }
+    inline void triggerViewChange(VIEWTYPE const& curView)
+    {
+        m_rawProposeCache.clear();
+        m_proposeCache.clear();
+        m_preVoteCache.clear();
+        m_preCommitCache.clear();
+        m_futureProposeCache.clear();
+        removeInvalidViewChange(curView);
+    }
     /// delete requests cached in m_signCache, m_commitCache and m_prepareCache according to hash
     /// update the sign cache and commit cache immediately
     /// in case of that the commit/sign requests with the same hash are solved in
@@ -200,16 +200,16 @@ public:
         removeInvalidEntryFromCache(highestBlockHeader, m_preCommitCache);
     }
     /// remove invalid view-change requests according to view and the current block header
-//    void removeInvalidViewChange(VIEWTYPE const& view, dev::eth::BlockHeader const& highestBlock);
-//    inline void delInvalidViewChange(dev::eth::BlockHeader const& curHeader)
-//    {
-//        removeInvalidEntryFromCache(curHeader, m_recvViewChangeReq);
-//    }
+    void removeInvalidViewChange(VIEWTYPE const& view, dev::eth::BlockHeader const& highestBlock);
+    inline void delInvalidViewChange(dev::eth::BlockHeader const& curHeader)
+    {
+        removeInvalidEntryFromCache(curHeader, m_recvViewChangeReq);
+    }
     inline void clearAllExceptCommitCache()
     {
         m_proposeCache.clear();
         m_preVoteCache.clear();
-//        m_recvViewChangeReq.clear();
+        m_recvViewChangeReq.clear();
     }
 
     inline void clearAll()
@@ -236,11 +236,11 @@ public:
     {
         return m_preCommitCache;
     }
-//    std::unordered_map<VIEWTYPE, std::unordered_map<IDXTYPE, ViewChangeReq>>&
-//    mutableViewChangeCache()
-//    {
-//        return m_recvViewChangeReq;
-//    }
+    std::unordered_map<VIEWTYPE, std::unordered_map<IDXTYPE, RoundChangeReq>>&
+    mutableViewChangeCache()
+    {
+        return m_recvViewChangeReq;
+    }
     void getCacheConsensusStatus(json_spirit::Array& statusArray) const;
 
 private:
@@ -270,20 +270,20 @@ private:
         }
     }
 
-//    inline void removeInvalidViewChange(VIEWTYPE const& curView)
-//    {
-//        for (auto it = m_recvViewChangeReq.begin(); it != m_recvViewChangeReq.end();)
-//        {
-//            if (it->first <= curView)
-//                it = m_recvViewChangeReq.erase(it);
-//            else
-//                it++;
-//        }
-//    }
+    inline void removeInvalidViewChange(VIEWTYPE const& curView)
+    {
+        for (auto it = m_recvViewChangeReq.begin(); it != m_recvViewChangeReq.end();)
+        {
+            if (it->first <= curView)
+                it = m_recvViewChangeReq.erase(it);
+            else
+                it++;
+        }
+    }
     /// remove sign cache according to block hash and view
-    void removeInvalidSignCache(h256 const& blockHash, int64_t const& round);
+    void removeInvalidSignCache(h256 const& blockHash, VIEWTYPE const& view);
     /// remove commit cache according to block hash and view
-    void removeInvalidCommitCache(h256 const& blockHash, int64_t const& round);
+    void removeInvalidCommitCache(h256 const& blockHash, VIEWTYPE const& view);
 
     template <typename T, typename U, typename S>
     inline bool cacheExists(T const& cache, U const& mainKey, S const& key)
@@ -304,7 +304,7 @@ private:
                 json_spirit::Pair(key + "_blockHash", "0x" + toHex(cache.block_hash)));
         cacheStatus.push_back(json_spirit::Pair(key + "_height", cache.height));
         cacheStatus.push_back(json_spirit::Pair(key + "_idx", toString(cache.idx)));
-        cacheStatus.push_back(json_spirit::Pair(key + "_round", toString(cache.round)));
+        cacheStatus.push_back(json_spirit::Pair(key + "_view", toString(cache.view)));
         jsonArray.push_back(cacheStatus);
     }
 
@@ -335,7 +335,7 @@ private:
     /// cache for signReq(maps between hash and sign requests)
     std::unordered_map<h256, std::unordered_map<std::string, PreVoteReq>> m_preVoteCache;
     /// cache for received-viewChange requests(maps between view and view change requests)
-//    std::unordered_map<VIEWTYPE, std::unordered_map<IDXTYPE, ViewChangeReq>> m_recvViewChangeReq;
+    std::unordered_map<VIEWTYPE, std::unordered_map<IDXTYPE, RoundChangeReq>> m_recvViewChangeReq;
     /// cache for commited requests(maps between hash and commited requests)
     std::unordered_map<h256, std::unordered_map<std::string, PreCommitReq>> m_preCommitCache;
     /// cache for prepare request need to be backup and saved

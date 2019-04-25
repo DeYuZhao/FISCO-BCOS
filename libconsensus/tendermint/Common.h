@@ -1,11 +1,6 @@
 //
 // Created by 赵德宇 on 2019-04-01.
 //
-
-#ifndef FISCO_BCOS_COMMON_H
-#define FISCO_BCOS_COMMON_H
-
-#endif //FISCO_BCOS_COMMON_H
 #pragma once
 #include <libconsensus/Common.h>
 #include <libdevcore/RLP.h>
@@ -33,6 +28,7 @@ enum TendermintPacketType
     ProposeReqPacket = 0x00,
     PreVoteReqPacket = 0x01,
     PreCommitReqPacket = 0x02,
+    RoundChangeReqPacket = 0x03,
     TendermintPacketCount
 };
 
@@ -127,9 +123,9 @@ struct TendermintMsg
     /// the number of the block that is handling
     int64_t height = -1;
     /// round when construct this TendermintMsg
-    int64_t round = -1;
+//    int64_t round = -1;
     /// view when construct this TendermintMsg
-//    VIEWTYPE view = MAXVIEW;
+    VIEWTYPE view = MAXVIEW;
     /// index of the node generate the TendermintMsg
     IDXTYPE idx = MAXIDX;
     /// timestamp when generate the TendermintMsg
@@ -141,12 +137,12 @@ struct TendermintMsg
     /// signature to the hash of other fields except block_hash, sig and sig2
     Signature sig2 = Signature();
     TendermintMsg() = default;
-    TendermintMsg(KeyPair const& _keyPair, int64_t const& _height, int64_t const& _round,
+    TendermintMsg(KeyPair const& _keyPair, int64_t const& _height, VIEWTYPE const& _view,
             IDXTYPE const& _idx, h256 const _blockHash)
     {
         height = _height;
-        round = _round;
-//        view = _view;
+//        round = _round;
+        view = _view;
         idx = _idx;
         timestamp = u256(utcTime());
         block_hash = _blockHash;
@@ -157,7 +153,7 @@ struct TendermintMsg
 
     bool operator==(TendermintMsg const& req) const
     {
-        return height == req.height && round == req.round && block_hash == req.block_hash &&
+        return height == req.height && view == req.view && block_hash == req.block_hash &&
                sig == req.sig && sig2 == req.sig2;
     }
 
@@ -190,7 +186,7 @@ struct TendermintMsg
     /// trans PBFTMsg into RLPStream for encoding
     virtual void streamRLPFields(RLPStream& _s) const
     {
-        _s << height << round << idx << timestamp << block_hash << sig.asBytes() << sig2.asBytes();
+        _s << height << view << idx << timestamp << block_hash << sig.asBytes() << sig2.asBytes();
     }
 
     /// populate specified rlp into TendermintMsg object
@@ -200,8 +196,8 @@ struct TendermintMsg
         try
         {
             height = rlp[field = 0].toInt<int64_t>();
-            round = rlp[field = 1].toInt<int64_t >();
-//            view = rlp[field = 2].toInt<VIEWTYPE>();
+//            round = rlp[field = 1].toInt<int64_t >();
+            view = rlp[field = 1].toInt<VIEWTYPE>();
             idx = rlp[field = 2].toInt<IDXTYPE>();
             timestamp = rlp[field = 3].toInt<u256>();
             block_hash = rlp[field = 4].toHash<h256>(RLP::VeryStrict);
@@ -220,8 +216,8 @@ struct TendermintMsg
     void clear()
     {
         height = -1;
-        round = -1;
-//        view = MAXVIEW;
+//        round = -1;
+        view = MAXVIEW;
         idx = MAXIDX;
         timestamp = Invalid256;
         block_hash = h256();
@@ -233,7 +229,7 @@ struct TendermintMsg
     h256 fieldsWithoutBlock() const
     {
         RLPStream ts;
-        ts << height << round << idx << timestamp;
+        ts << height << view << idx << timestamp;
         return dev::sha3(ts.out());
     }
 
@@ -262,9 +258,9 @@ struct ProposeReq : public TendermintMsg
     dev::blockverifier::ExecutiveContext::Ptr p_execContext = nullptr;
     /// default constructor
     ProposeReq() = default;
-    ProposeReq(KeyPair const& _keyPair, int64_t const& _height, int64_t const& _round,
+    ProposeReq(KeyPair const& _keyPair, int64_t const& _height, VIEWTYPE const& _view,
                IDXTYPE const& _idx, h256 const _blockHash)
-            : TendermintMsg(_keyPair, _height, _round, _idx, _blockHash), p_execContext(nullptr)
+            : TendermintMsg(_keyPair, _height, _view, _idx, _blockHash), p_execContext(nullptr)
     {}
 
     /**
@@ -276,11 +272,11 @@ struct ProposeReq : public TendermintMsg
      * @param _view: current view
      * @param _idx: index of the node that generates this ProposeReq
      */
-    ProposeReq(ProposeReq const& req, KeyPair const& keyPair, int64_t const& _round, IDXTYPE const& _idx)
+    ProposeReq(ProposeReq const& req, KeyPair const& keyPair, VIEWTYPE const& _view, IDXTYPE const& _idx)
     {
         height = req.height;
-        round = _round;
-//        view = _view;
+//        round = _round;
+        view = _view;
         idx = _idx;
         timestamp = u256(utcTime());
         block_hash = req.block_hash;
@@ -298,11 +294,11 @@ struct ProposeReq : public TendermintMsg
      * @param _view : current view
      * @param _idx : index of the node that generates this ProposeReq
      */
-    ProposeReq(dev::eth::Block const& blockStruct, KeyPair const& keyPair, int64_t const& _round, IDXTYPE const& _idx)
+    ProposeReq(dev::eth::Block const& blockStruct, KeyPair const& keyPair, VIEWTYPE const& _view, IDXTYPE const& _idx)
     {
         height = blockStruct.blockHeader().number();
-        round = _round;
-//        view = _view;
+//        round = _round;
+        view = _view;
         idx = _idx;
         timestamp = u256(utcTime());
         block_hash = blockStruct.blockHeader().hash();
@@ -322,8 +318,8 @@ struct ProposeReq : public TendermintMsg
     ProposeReq(ProposeReq const& req, Sealing const& sealing, KeyPair const& keyPair)
     {
         height = req.height;
-        round = req.round;
-//        view = req.view;
+//        round = req.round;
+        view = req.view;
         idx = req.idx;
         p_execContext = sealing.p_execContext;
         /// sealing.block.encode(block);
@@ -382,8 +378,8 @@ struct PreVoteReq : public TendermintMsg
     PreVoteReq(ProposeReq const& req, KeyPair const& keyPair, IDXTYPE const& _idx)
     {
         height = req.height;
-        round = req.round;
-//        view = req.view;
+//        round = req.round;
+        view = req.view;
         idx = _idx;
         timestamp = u256(utcTime());
         block_hash = req.block_hash;
@@ -406,11 +402,36 @@ struct PreCommitReq : public TendermintMsg
     PreCommitReq(ProposeReq const& req, KeyPair const& keyPair, IDXTYPE const& _idx)
     {
         height = req.height;
-        round = req.round;
-//        view = req.view;
+//        round = req.round;
+        view = req.view;
         idx = _idx;
         timestamp = u256(utcTime());
         block_hash = req.block_hash;
+        sig = signHash(block_hash, keyPair);
+        sig2 = signHash(fieldsWithoutBlock(), keyPair);
+    }
+};
+
+/// view change request
+struct RoundChangeReq : public TendermintMsg
+{
+    RoundChangeReq() = default;
+    /**
+     * @brief: generate ViewChangeReq from given params
+     * @param keyPair: keypair used to sign for the ViewChangeReq
+     * @param _height: current block number
+     * @param _view: current view
+     * @param _idx: index of the node that generates this ViewChangeReq
+     * @param _hash: block hash
+     */
+    RoundChangeReq(KeyPair const& keyPair, int64_t const& _height, VIEWTYPE const _view,
+                  IDXTYPE const& _idx, h256 const& _hash)
+    {
+        height = _height;
+        view = _view;
+        idx = _idx;
+        timestamp = u256(utcTime());
+        block_hash = _hash;
         sig = signHash(block_hash, keyPair);
         sig2 = signHash(fieldsWithoutBlock(), keyPair);
     }

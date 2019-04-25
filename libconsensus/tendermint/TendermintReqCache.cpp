@@ -67,79 +67,79 @@ bool TendermintReqCache::generateAndSetSigList(dev::eth::Block& block, IDXTYPE c
  * @return true: should trigger viewchange
  * @return false: can't trigger viewchange
  */
-//bool TendermintReqCache::canTriggerViewChange(VIEWTYPE& minView, IDXTYPE const& maxInvalidNodeNum,
-//                                        VIEWTYPE const& toView, dev::eth::BlockHeader const& highestBlock,
-//                                        int64_t const& consensusBlockNumber)
-//{
-//    std::map<IDXTYPE, VIEWTYPE> idx_view_map;
-//    minView = MAXVIEW;
-//    int64_t min_height = INT64_MAX;
-//    for (auto const& viewChangeItem : m_recvViewChangeReq)
-//    {
-//        if (viewChangeItem.first > toView)
-//        {
-//            for (auto const& viewChangeEntry : viewChangeItem.second)
-//            {
-//                auto it = idx_view_map.find(viewChangeEntry.first);
-//                if ((it == idx_view_map.end() || viewChangeItem.first > it->second) &&
-//                    viewChangeEntry.second.height >= highestBlock.number())
-//                {
-//                    /// update to lower view
-//                    if (it != idx_view_map.end())
-//                    {
-//                        it->second = viewChangeItem.first;
-//                    }
-//                    else
-//                    {
-//                        idx_view_map.insert(
-//                                std::make_pair(viewChangeEntry.first, viewChangeItem.first));
-//                    }
-//
-//                    // idx_view_map[viewChangeEntry.first] = viewChangeItem.first;
-//
-//                    if (minView > viewChangeItem.first)
-//                        minView = viewChangeItem.first;
-//                    /// update to lower height
-//                    if (min_height > viewChangeEntry.second.height)
-//                        min_height = viewChangeEntry.second.height;
-//                }
-//            }
-//        }
-//    }
-//    IDXTYPE count = idx_view_map.size();
-//    bool flag =
-//            (min_height == consensusBlockNumber) && (min_height == m_committedPrepareCache.height);
-//    return (count > maxInvalidNodeNum) && !flag;
-//}
+bool TendermintReqCache::canTriggerViewChange(VIEWTYPE& minView, IDXTYPE const& maxInvalidNodeNum,
+                                        VIEWTYPE const& toView, dev::eth::BlockHeader const& highestBlock,
+                                        int64_t const& consensusBlockNumber)
+{
+    std::map<IDXTYPE, VIEWTYPE> idx_view_map;
+    minView = MAXVIEW;
+    int64_t min_height = INT64_MAX;
+    for (auto const& viewChangeItem : m_recvViewChangeReq)
+    {
+        if (viewChangeItem.first > toView)
+        {
+            for (auto const& viewChangeEntry : viewChangeItem.second)
+            {
+                auto it = idx_view_map.find(viewChangeEntry.first);
+                if ((it == idx_view_map.end() || viewChangeItem.first > it->second) &&
+                    viewChangeEntry.second.height >= highestBlock.number())
+                {
+                    /// update to lower view
+                    if (it != idx_view_map.end())
+                    {
+                        it->second = viewChangeItem.first;
+                    }
+                    else
+                    {
+                        idx_view_map.insert(
+                                std::make_pair(viewChangeEntry.first, viewChangeItem.first));
+                    }
+
+                    // idx_view_map[viewChangeEntry.first] = viewChangeItem.first;
+
+                    if (minView > viewChangeItem.first)
+                        minView = viewChangeItem.first;
+                    /// update to lower height
+                    if (min_height > viewChangeEntry.second.height)
+                        min_height = viewChangeEntry.second.height;
+                }
+            }
+        }
+    }
+    IDXTYPE count = idx_view_map.size();
+    bool flag =
+            (min_height == consensusBlockNumber) && (min_height == m_committedProposeCache.height);
+    return (count > maxInvalidNodeNum) && !flag;
+}
 /**
  * @brief: remove invalid view-change requests according to view and the current block header
  * @param view
  * @param highestBlock: the current block header
  */
-//void TendermintReqCache::removeInvalidViewChange(
-//        VIEWTYPE const& view, dev::eth::BlockHeader const& highestBlock)
-//{
-//    auto it = m_recvViewChangeReq.find(view);
-//    if (it == m_recvViewChangeReq.end())
-//    {
-//        return;
-//    }
-//
-//    for (auto pview = it->second.begin(); pview != it->second.end();)
-//    {
-//        /// remove old received view-change
-//        if (pview->second.height < highestBlock.number())
-//            pview = it->second.erase(pview);
-//            /// remove invalid view-change request with invalid hash
-//        else if (pview->second.height == highestBlock.number() &&
-//                 pview->second.block_hash != highestBlock.hash())
-//            pview = it->second.erase(pview);
-//        else
-//            pview++;
-//    }
-//}
+void TendermintReqCache::removeInvalidViewChange(
+        VIEWTYPE const& view, dev::eth::BlockHeader const& highestBlock)
+{
+    auto it = m_recvViewChangeReq.find(view);
+    if (it == m_recvViewChangeReq.end())
+    {
+        return;
+    }
+
+    for (auto pview = it->second.begin(); pview != it->second.end();)
+    {
+        /// remove old received view-change
+        if (pview->second.height < highestBlock.number())
+            pview = it->second.erase(pview);
+            /// remove invalid view-change request with invalid hash
+        else if (pview->second.height == highestBlock.number() &&
+                 pview->second.block_hash != highestBlock.hash())
+            pview = it->second.erase(pview);
+        else
+            pview++;
+    }
+}
 /// remove sign cache according to block hash and round
-void TendermintReqCache::removeInvalidSignCache(h256 const& blockHash, int64_t const& round)
+void TendermintReqCache::removeInvalidSignCache(h256 const& blockHash, VIEWTYPE const& view)
 {
     auto it = m_preVoteCache.find(blockHash);
     if (it == m_preVoteCache.end())
@@ -147,21 +147,21 @@ void TendermintReqCache::removeInvalidSignCache(h256 const& blockHash, int64_t c
     for (auto pcache = it->second.begin(); pcache != it->second.end();)
     {
         /// erase invalid round
-        if (pcache->second.round != round)
+        if (pcache->second.view != view)
             pcache = it->second.erase(pcache);
         else
             pcache++;
     }
 }
 /// remove commit cache according to block hash and round
-void TendermintReqCache::removeInvalidCommitCache(h256 const& blockHash, int64_t const& round)
+void TendermintReqCache::removeInvalidCommitCache(h256 const& blockHash, VIEWTYPE const& view)
 {
     auto it = m_preCommitCache.find(blockHash);
     if (it == m_preCommitCache.end())
         return;
     for (auto pcache = it->second.begin(); pcache != it->second.end();)
     {
-        if (pcache->second.round != round)
+        if (pcache->second.view != view)
             pcache = it->second.erase(pcache);
         else
             pcache++;
@@ -181,7 +181,7 @@ void TendermintReqCache::getCacheConsensusStatus(json_spirit::Array& status_arra
     /// signCache
     getCollectedCacheStatus(status_array, "preVoteCache", m_preVoteCache);
     getCollectedCacheStatus(status_array, "preCommitCache", m_preCommitCache);
-//    getCollectedCacheStatus(status_array, "viewChangeCache", m_recvViewChangeReq);
+    getCollectedCacheStatus(status_array, "viewChangeCache", m_recvViewChangeReq);
 }
 
 }

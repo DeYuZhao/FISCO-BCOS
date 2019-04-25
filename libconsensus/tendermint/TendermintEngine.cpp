@@ -35,7 +35,7 @@ void TendermintEngine::initTendermintEnv()
     Guard l(m_mutex);
     resetConfig();
     m_consensusBlockNumber = 0;
-    m_round = 0;
+    m_view = m_toView = 0;
     m_leaderFailed = false;
     initBackupDB();
     m_timeManager.initTimerManager(3 * getIntervalBlockTime());
@@ -147,7 +147,7 @@ void TendermintEngine::rehandleCommitedProposeCache(ProposeReq const& req)
                          << LOG_KV("nodeId", m_keyPair.pub().abridged())
                          << LOG_KV("hash", req.block_hash.abridged()) << LOG_KV("H", req.height);
     m_broadCastCache->clearAll();
-    ProposeReq prepare_req(req, m_keyPair, m_round, nodeIdx());
+    ProposeReq prepare_req(req, m_keyPair, m_view, nodeIdx());
     bytes prepare_data;
     prepare_req.encode(prepare_data);
     /// broadcast prepare message
@@ -205,10 +205,20 @@ bool TendermintEngine::generatePropose(Block const& block)
     if (succ)
     {
         ///not change the propose if the packet is empty
+        if (propose_req.pBlock->getTransactionSize() == 0 && m_omitEmptyBlock)
+        {
+            m_leaderFailed = true;
+            changeViewForEmptyBlock();
+            return true;
+        }
         handleProposeMsg(propose_req);
     }
 
     ///TODO LOG
+    TENDERMINTENGINE_LOG(DEBUG) << LOG_DESC("generateLocalPropose")
+                          << LOG_KV("hash", propose_req.block_hash.abridged())
+                          << LOG_KV("H", propose_req.height) << LOG_KV("nodeIdx", nodeIdx())
+                          << LOG_KV("myNode", m_keyPair.pub().abridged());
     m_signalled.notify_all();
 
     return succ;
@@ -234,13 +244,13 @@ void TendermintEngine::reportBlockWithoutLock(Block const& block)
         m_highestBlock = block.blockHeader();
         if (m_highestBlock.number() >= m_consensusBlockNumber)
         {
-            m_round = 0;
+            m_view = m_toView = 0;
             m_leaderFailed = false;
             m_timeManager.m_lastConsensusTime = utcTime();
             m_timeManager.m_changeCycle = 0;
             m_consensusBlockNumber = m_highestBlock.number() + 1;
             /// delete invalid view change requests from the cache
-//            m_reqCache->delInvalidViewChange(m_highestBlock);
+            m_reqCache->delInvalidViewChange(m_highestBlock);
         }
         resetConfig();
         m_reqCache->delCache(m_highestBlock.hash());
@@ -262,9 +272,9 @@ const std::string TendermintEngine::consensusStatus()
     /// get other informations related to PBFT
     statusObj.push_back(json_spirit::Pair("connectedNodes", m_connectedNode));
     /// get the current view
-    statusObj.push_back(json_spirit::Pair("currentView", m_round));
+    statusObj.push_back(json_spirit::Pair("currentView", m_view));
     /// get toView
-//    statusObj.push_back(json_spirit::Pair("toView", m_toView));
+    statusObj.push_back(json_spirit::Pair("toView", m_toView));
     /// get leader failed or not
     statusObj.push_back(json_spirit::Pair("leaderFailed", m_leaderFailed));
     status.push_back(statusObj);
@@ -281,10 +291,10 @@ const std::string TendermintEngine::consensusStatus()
 
 void TendermintEngine::getAllNodesViewStatus(json_spirit::Array& status)
 {
-    updateRoundMap(nodeIdx(), m_round);
+    updateViewMap(nodeIdx(), m_view);
     json_spirit::Array view_array;
-    ReadGuard l(x_roundMap);
-    for (auto it : m_roundMap)
+    ReadGuard l(x_viewMap);
+    for (auto it : m_viewMap)
     {
         json_spirit::Object view_obj;
         dev::network::NodeID node_id = getSealerByIndex(it.first);
@@ -302,7 +312,7 @@ void TendermintEngine::getAllNodesViewStatus(json_spirit::Array& status)
  * @brief: notify the seal module to seal block if the current node is the next leader
  * @param block: block obtained from the propose packet, used to filter transactions
  */
-void TendermintEngine::notifySealing(Block const& block)
+void TendermintEngine::notifySealing(dev::eth::Block const& block)
 {
     if (!m_onNotifyNextLeaderReset)
     {
@@ -462,6 +472,21 @@ void TendermintEngine::execBlock(Sealing& sealing, ProposeReq const& req, std::o
                                 << LOG_KV("execPerTx", (float)time_cost / (float)sealing.block.getTransactionSize());
 }
 
+/// check whether the block is empty
+bool TendermintEngine::needOmit(Sealing const& sealing)
+{
+    if (sealing.block.getTransactionSize() == 0 && m_omitEmptyBlock)
+    {
+        TENDERMINTENGINE_LOG(TRACE) << LOG_DESC("needOmit")
+                              << LOG_KV("blkNum", sealing.block.blockHeader().number())
+                              << LOG_KV("hash", sealing.block.blockHeader().hash().abridged())
+                              << LOG_KV("nodeIdx", nodeIdx())
+                              << LOG_KV("myNode", m_keyPair.pub().abridged());
+        return true;
+    }
+    return false;
+}
+
 bool TendermintEngine::getNodeIDByIndex(h512& nodeID, const IDXTYPE& idx) const
 {
     nodeID = getSealerByIndex(idx);
@@ -483,6 +508,60 @@ bool TendermintEngine::checkSign(TendermintMsg const& req) const
         Public pub_id = jsToPublic(toJS(node_id.hex()));
         return dev::verify(pub_id, req.sig, req.block_hash) &&
                dev::verify(pub_id, req.sig2, req.fieldsWithoutBlock());
+    }
+    return false;
+}
+
+/// send view change message to the given node
+void TendermintEngine::sendViewChangeMsg(dev::network::NodeID const& nodeId)
+{
+    RoundChangeReq req(
+            m_keyPair, m_highestBlock.number(), m_toView, nodeIdx(), m_highestBlock.hash());
+    TENDERMINTENGINE_LOG(DEBUG) << LOG_DESC("sendViewChangeMsg: send viewchange to started node")
+                          << LOG_KV("v", m_view) << LOG_KV("toV", m_toView)
+                          << LOG_KV("highNum", m_highestBlock.number())
+                          << LOG_KV("peerNode", nodeId.abridged())
+                          << LOG_KV("hash", req.block_hash.abridged())
+                          << LOG_KV("nodeIdx", nodeIdx())
+                          << LOG_KV("myNode", m_keyPair.pub().abridged());
+
+    bytes view_change_data;
+    req.encode(view_change_data);
+    sendMsg(nodeId, RoundChangeReqPacket, req.uniqueKey(), ref(view_change_data));
+}
+
+bool TendermintEngine::sendMsg(dev::network::NodeID const& nodeId, unsigned const& packetType,
+                         std::string const& key, bytesConstRef data, unsigned const& ttl)
+{
+    /// is sealer?
+    if (getIndexBySealer(nodeId) < 0)
+    {
+        return true;
+    }
+    /// packet has been broadcasted?
+    if (broadcastFilter(nodeId, packetType, key))
+    {
+        return true;
+    }
+    auto sessions = m_service->sessionInfosByProtocolID(m_protocolId);
+    if (sessions.size() == 0)
+    {
+        return false;
+    }
+    for (auto session : sessions)
+    {
+        if (session.nodeID == nodeId)
+        {
+            m_service->asyncSendMessageByNodeID(
+                    session.nodeID, transDataToMessage(data, packetType, ttl), nullptr);
+            TENDERMINTENGINE_LOG(DEBUG) << LOG_DESC("sendMsg") << LOG_KV("packetType", packetType)
+                                  << LOG_KV("dstNodeId", nodeId.abridged())
+                                  << LOG_KV("remote_endpoint", session.nodeIPEndpoint.name())
+                                  << LOG_KV("nodeIdx", nodeIdx())
+                                  << LOG_KV("myNode", m_keyPair.pub().abridged());
+            broadcastMark(session.nodeID, packetType, key);
+            return true;
+        }
     }
     return false;
 }
@@ -604,6 +683,86 @@ CheckValid TendermintEngine::isValidCommitReq(PreCommitReq const&req, std::ostri
     return result;
 }
 
+bool TendermintEngine::isValidViewChangeReq(
+        RoundChangeReq const& req, IDXTYPE const& source, std::ostringstream& oss)
+{
+    if (m_reqCache->isExistViewChange(req))
+    {
+        TENDERMINTENGINE_LOG(TRACE) << LOG_DESC("InvalidViewChangeReq: Duplicated")
+                              << LOG_KV("INFO", oss.str());
+        return false;
+    }
+    if (req.idx == nodeIdx())
+    {
+        TENDERMINTENGINE_LOG(TRACE) << LOG_DESC("InvalidViewChangeReq: own req")
+                              << LOG_KV("INFO", oss.str());
+        return false;
+    }
+    if (req.view + 1 < m_toView && req.idx == source)
+    {
+        catchupView(req, oss);
+    }
+    /// check view and block height
+    if (req.height < m_highestBlock.number() || req.view <= m_view)
+    {
+        TENDERMINTENGINE_LOG(TRACE) << LOG_DESC("InvalidViewChangeReq: invalid view or height")
+                              << LOG_KV("INFO", oss.str());
+        return false;
+    }
+    /// check block hash
+    if ((req.height == m_highestBlock.number() && req.block_hash != m_highestBlock.hash()) ||
+        (m_blockChain->getBlockByHash(req.block_hash) == nullptr))
+    {
+        TENDERMINTENGINE_LOG(TRACE) << LOG_DESC("InvalidViewChangeReq, invalid hash")
+                              << LOG_KV("highHash", m_highestBlock.hash().abridged())
+                              << LOG_KV("INFO", oss.str());
+        return false;
+    }
+    if (!checkSign(req))
+    {
+        TENDERMINTENGINE_LOG(TRACE) << LOG_DESC("InvalidViewChangeReq: invalid sign")
+                              << LOG_KV("INFO", oss.str());
+        return false;
+    }
+    return true;
+}
+
+void TendermintEngine::catchupView(RoundChangeReq const& req, std::ostringstream& oss)
+{
+    if (req.view + 1 < m_toView)
+    {
+        TENDERMINTENGINE_LOG(DEBUG) << LOG_DESC("catchupView") << LOG_KV("toView", m_toView)
+                              << LOG_KV("INFO", oss.str());
+        dev::network::NodeID nodeId;
+        bool succ = getNodeIDByIndex(nodeId, req.idx);
+        if (succ)
+        {
+            sendViewChangeMsg(nodeId);
+        }
+    }
+}
+
+void TendermintEngine::checkAndChangeView()
+{
+    IDXTYPE count = m_reqCache->getViewChangeSize(m_toView);
+    if (count >= minValidNodes() - 1)
+    {
+        TENDERMINTENGINE_LOG(INFO) << LOG_DESC("checkAndChangeView: Reach consensus")
+                             << LOG_KV("to_view", m_toView);
+        /// reach to consensue dure to fast view change
+        if (m_timeManager.m_lastSignTime == 0)
+        {
+            m_fastViewChange = false;
+        }
+        m_leaderFailed = false;
+        m_timeManager.m_lastConsensusTime = utcTime();
+        m_view = m_toView;
+        m_notifyNextLeaderSeal = false;
+        m_reqCache->triggerViewChange(m_view);
+        m_blockSync->noteSealingBlockNumber(m_blockChain->number());
+    }
+}
+
 /**
  * @brief : 1. generate and broadcast voteReq according to given proposeReq,
  *          2. add the generated signReq into the cache
@@ -634,6 +793,31 @@ bool TendermintEngine::broadcastCommitReq(ProposeReq const& req)
     if (succ)
         m_reqCache->addCommitReq(commit_req);
     return succ;
+}
+
+bool TendermintEngine::broadcastViewChangeReq()
+{
+    RoundChangeReq req(
+            m_keyPair, m_highestBlock.number(), m_toView, nodeIdx(), m_highestBlock.hash());
+    TENDERMINTENGINE_LOG(DEBUG) << LOG_DESC("broadcastViewChangeReq ") << LOG_KV("v", m_view)
+                          << LOG_KV("toV", m_toView) << LOG_KV("highNum", m_highestBlock.number())
+                          << LOG_KV("hash", req.block_hash.abridged())
+                          << LOG_KV("nodeIdx", nodeIdx())
+                          << LOG_KV("myNode", m_keyPair.pub().abridged());
+    /// view change not caused by fast view change
+    if (!m_fastViewChange)
+    {
+        TENDERMINTENGINE_LOG(WARNING) << LOG_DESC("ViewChangeWarning: not caused by omit empty block ")
+                                << LOG_KV("v", m_view) << LOG_KV("toV", m_toView)
+                                << LOG_KV("highNum", m_highestBlock.number())
+                                << LOG_KV("hash", req.block_hash.abridged())
+                                << LOG_KV("nodeIdx", nodeIdx())
+                                << LOG_KV("myNode", m_keyPair.pub().abridged());
+    }
+
+    bytes view_change_data;
+    req.encode(view_change_data);
+    return broadcastMsg(RoundChangeReqPacket, req.uniqueKey(), ref(view_change_data));
 }
 
 /**
@@ -704,7 +888,7 @@ void TendermintEngine::onRecvTendermintMessage(
     {
         return;
     }
-    if (tendermint_msg.packet_id <= PreCommitReqPacket)
+    if (tendermint_msg.packet_id <= RoundChangeReqPacket)
     {
         m_msgQueue.push(tendermint_msg);
         /// notify to handleMsg after push new TendermintMsgPacket into m_msgQueue
@@ -741,7 +925,7 @@ void TendermintEngine::backupMsg(std::string const& _key, TendermintMsg const& _
 void TendermintEngine::checkAndCommit()
 {
     size_t vote_size = m_reqCache->getSigCacheSize(m_reqCache->proposeCache().block_hash);
-    if (vote_size > m_roundNodeNum * 2 / 3)
+    if (vote_size == minValidNodes())
     {
         TENDERMINTENGINE_LOG(DEBUG) << LOG_DESC("checkAndCommit, SignReq enough")
                                     << LOG_KV("number", m_reqCache->proposeCache().height)
@@ -749,10 +933,10 @@ void TendermintEngine::checkAndCommit()
                                     << LOG_KV("hash", m_reqCache->proposeCache().block_hash.abridged())
                                     << LOG_KV("nodeIdx", nodeIdx())
                                     << LOG_KV("myNode", m_keyPair.pub().abridged());
-        if (m_reqCache->proposeCache().round != m_round)
+        if (m_reqCache->proposeCache().view != m_view)
         {
             TENDERMINTENGINE_LOG(DEBUG) << LOG_DESC("checkAndCommit: InvalidView")
-                                        << LOG_KV("prepView", m_reqCache->proposeCache().round)
+                                        << LOG_KV("prepView", m_reqCache->proposeCache().view)
                                         << LOG_KV("round", m_round)
                                         << LOG_KV("hash", m_reqCache->proposeCache().block_hash.abridged())
                                         << LOG_KV("prepH", m_reqCache->proposeCache().height);
@@ -784,8 +968,9 @@ void TendermintEngine::checkAndCommit()
 /// check whether view and height is valid, if valid, then commit the block and clear the context
 void TendermintEngine::checkAndSave()
 {
-    size_t  commit_size = m_reqCache->getCommitCacheSize(m_reqCache->proposeCache().block_hash);
-    if (commit_size == m_roundNodeNum * 2 / 3)
+    size_t vote_size = m_reqCache->getSigCacheSize(m_reqCache->proposeCache().block_hash);
+    size_t commit_size = m_reqCache->getCommitCacheSize(m_reqCache->proposeCache().block_hash);
+    if (vote_size >= minValidNodes() && commit_size >= minValidNodes())
     {
         TENDERMINTENGINE_LOG(DEBUG) << LOG_DESC("checkAndSave: CommitReq enough")
                                     << LOG_KV("blkNum", m_reqCache->proposeCache().height)
@@ -793,10 +978,10 @@ void TendermintEngine::checkAndSave()
                                     << LOG_KV("hash", m_reqCache->proposeCache().block_hash.abridged())
                                     << LOG_KV("nodeIdx", nodeIdx())
                                     << LOG_KV("myNode", m_keyPair.pub().abridged());
-        if (m_reqCache->proposeCache().round != m_round)
+        if (m_reqCache->proposeCache().view != m_view)
         {
             TENDERMINTENGINE_LOG(DEBUG) << LOG_DESC("checkAndSave: InvalidView")
-                                        << LOG_KV("prepView", m_reqCache->proposeCache().round)
+                                        << LOG_KV("prepView", m_reqCache->proposeCache().view)
                                         << LOG_KV("round", m_round)
                                         << LOG_KV("prepHeight", m_reqCache->proposeCache().height)
                                         << LOG_KV("hash", m_reqCache->proposeCache().block_hash.abridged())
@@ -827,12 +1012,12 @@ void TendermintEngine::checkAndSave()
                                             << LOG_KV("nodeIdx", nodeIdx()) << LOG_KV("myNode", m_keyPair.pub().abridged())
                                             << LOG_KV("time_cost", utcTime() - start_commit_time);
                 m_reqCache->delCache(m_reqCache->proposeCache().block_hash);
-                WriteGuard ul(x_roundNodeNum);
-                --m_roundNodeNum;
-                if (m_roundNodeNum == 0)
-                    m_roundNodeNum = m_nodeNum;
-                m_round = 0;
-                m_lockedBlock = false;
+//                WriteGuard ul(x_roundNodeNum);
+//                --m_roundNodeNum;
+//                if (m_roundNodeNum == 0)
+//                    m_roundNodeNum = m_nodeNum;
+//                m_round = 0;
+//                m_lockedBlock = false;
             }
             else
             {
@@ -847,19 +1032,19 @@ void TendermintEngine::checkAndSave()
                 m_txPool->handleBadBlock(*p_block);
             }
         }
-        else if (m_reqCache->proposeCache().height > m_highestBlock.number() &&
-                 m_reqCache->proposeCache().p_execContext == nullptr)
-        {
-            std::shared_ptr<dev::eth::Block> p_block = m_reqCache->proposeCache().pBlock;
-            TENDERMINTENGINE_LOG(WARNING) << LOG_DESC("Not Commit Empty Block")
-                                          << LOG_KV("blkNum", p_block->blockHeader().number())
-                                          << LOG_KV("highNum", m_highestBlock.number())
-                                          << LOG_KV("reqIdx", m_reqCache->proposeCache().idx)
-                                          << LOG_KV("hash", p_block->blockHeader().hash().abridged())
-                                          << LOG_KV("nodeIdx", nodeIdx()) << LOG_KV("myNode", m_keyPair.pub().abridged());
-            ++m_round;
-            m_lockedBlock = true;
-        }
+//        else if (m_reqCache->proposeCache().height > m_highestBlock.number() &&
+//                 m_reqCache->proposeCache().p_execContext == nullptr)
+//        {
+//            std::shared_ptr<dev::eth::Block> p_block = m_reqCache->proposeCache().pBlock;
+//            TENDERMINTENGINE_LOG(WARNING) << LOG_DESC("Not Commit Empty Block")
+//                                          << LOG_KV("blkNum", p_block->blockHeader().number())
+//                                          << LOG_KV("highNum", m_highestBlock.number())
+//                                          << LOG_KV("reqIdx", m_reqCache->proposeCache().idx)
+//                                          << LOG_KV("hash", p_block->blockHeader().hash().abridged())
+//                                          << LOG_KV("nodeIdx", nodeIdx()) << LOG_KV("myNode", m_keyPair.pub().abridged());
+//            ++m_round;
+//            m_lockedBlock = true;
+//        }
         else
         {
             TENDERMINTENGINE_LOG(WARNING) << LOG_DESC("checkAndSave: Consensus Failed, Block already exists")
@@ -895,41 +1080,39 @@ bool TendermintEngine::handleProposeMsg(ProposeReq &propose_req, TendermintMsgPa
  */
 bool TendermintEngine::handleProposeMsg(ProposeReq const& proposeReq, std::string const& endpoint)
 {
-    if (proposeReq.round > m_round)
-        return true;
     Timer t;
     std::ostringstream oss;
     oss << LOG_DESC("handleProposeMsg") << LOG_KV("reqIdx", proposeReq.idx)
-        << LOG_KV("round", proposeReq.round) << LOG_KV("number", proposeReq.height)
+        << LOG_KV("round", proposeReq.view) << LOG_KV("number", proposeReq.height)
         << LOG_KV("highNum", m_highestBlock.number()) << LOG_KV("consNum", m_consensusBlockNumber)
         << LOG_KV("fromIp", endpoint) << LOG_KV("hash", proposeReq.block_hash.abridged())
         << LOG_KV("nodeIdx", nodeIdx()) << LOG_KV("myNode", m_keyPair.pub().abridged());
 
     /// whether block is locked in last round
-    ProposeReq used_req = ProposeReq();
-    if (!m_lockedBlock)
-        used_req = proposeReq;
-    else
-        used_req = m_reqCache->rawProposeCache();
+//    ProposeReq used_req = ProposeReq();
+//    if (!m_lockedBlock)
+//        used_req = proposeReq;
+//    else
+//        used_req = m_reqCache->rawProposeCache();
 
     /// check the propose request is valid or not
-    auto valid_ret = isValidPropose(used_req, oss);
+    auto valid_ret = isValidPropose(proposeReq, oss);
 
     if (valid_ret == CheckValid::T_INVALID) {
         return false;
     }
     /// update the round for given idx
-    updateRoundMap(used_req.idx, used_req.round);
+    updateViewMap(proposeReq.idx, proposeReq.view);
 
     if (valid_ret == CheckValid::T_FUTURE) {
         return true;
     }
 
-    m_reqCache->addRawPropose(used_req);
+    m_reqCache->addRawPropose(proposeReq);
 
     Sealing workingSealing;
     try {
-        execBlock(workingSealing, used_req, oss);
+        execBlock(workingSealing, proposeReq, oss);
     }
     catch (std::exception &e) {
         TENDERMINTENGINE_LOG(WARNING) << LOG_DESC("Block execute failed")
@@ -938,9 +1121,15 @@ bool TendermintEngine::handleProposeMsg(ProposeReq const& proposeReq, std::strin
         return true;
     }
 
+    if (needOmit(workingSealing))
+    {
+        changeViewForEmptyBlock();
+        return true;
+    }
+
     /// generate prepare request with signature of this node to broadcast
     /// (can't change prepareReq since it may be broadcasted-forwarded to other nodes)
-    ProposeReq vote_req(used_req, workingSealing, m_keyPair);
+    ProposeReq vote_req(proposeReq, workingSealing, m_keyPair);
     m_reqCache->addProposeReq(vote_req);
     ///TODO LOG
 
@@ -974,7 +1163,7 @@ bool TendermintEngine::handleVoteMsg(PreVoteReq &voteReq, TendermintMsgPacket co
     std::ostringstream oss;
     oss << LOG_DESC("handleSignMsg") << LOG_KV("num", voteReq.height)
         << LOG_KV("highNum", m_highestBlock.number()) << LOG_KV("GenIdx", voteReq.idx)
-        << LOG_KV("nowRound", voteReq.round) << LOG_KV("globalRound", m_round)
+        << LOG_KV("nowRound", voteReq.view) << LOG_KV("globalRound", m_round)
         << LOG_KV("fromIdx", tendermintMsg.node_idx) << LOG_KV("fromNode", tendermintMsg.node_id.abridged())
         << LOG_KV("fromIp", tendermintMsg.endpoint) << LOG_KV("hash", voteReq.block_hash.abridged())
         << LOG_KV("nodeIdx", nodeIdx()) << LOG_KV("myNode", m_keyPair.pub().abridged());
@@ -984,7 +1173,7 @@ bool TendermintEngine::handleVoteMsg(PreVoteReq &voteReq, TendermintMsgPacket co
     {
         return false;
     }
-    updateRoundMap(voteReq.idx, voteReq.round);
+    updateViewMap(voteReq.idx, voteReq.view);
     if (valid_ret == CheckValid::T_FUTURE)
     {
         return true;
@@ -1018,7 +1207,7 @@ bool TendermintEngine::handleCommitMsg(PreCommitReq &commitReq, TendermintMsgPac
     std::ostringstream oss;
     oss << LOG_DESC("handleCommitMsg") << LOG_KV("blkNum", commitReq.height)
         << LOG_KV("highNum", m_highestBlock.number()) << LOG_KV("GenIdx", commitReq.idx)
-        << LOG_KV("nowRound", commitReq.round) << LOG_KV("globalRound", m_round)
+        << LOG_KV("nowRound", commitReq.view) << LOG_KV("globalRound", m_round)
         << LOG_KV("fromIdx", tendermintMsg.node_idx) << LOG_KV("fromNode", tendermintMsg.node_id.abridged())
         << LOG_KV("fromIp", tendermintMsg.endpoint) << LOG_KV("hash", commitReq.block_hash.abridged())
         << LOG_KV("nodeIdx", nodeIdx()) << LOG_KV("myNode", m_keyPair.pub().abridged());
@@ -1028,7 +1217,7 @@ bool TendermintEngine::handleCommitMsg(PreCommitReq &commitReq, TendermintMsgPac
     {
         return false;
     }
-    updateRoundMap(commitReq.idx, commitReq.round);
+    updateViewMap(commitReq.idx, commitReq.view);
     if (valid_ret == CheckValid::T_FUTURE)
     {
         return true;
@@ -1040,6 +1229,51 @@ bool TendermintEngine::handleCommitMsg(PreCommitReq &commitReq, TendermintMsgPac
     TENDERMINTENGINE_LOG(DEBUG) << LOG_DESC("handleCommitMsg Succ")
                                 << LOG_KV("Timecost", 1000 * t.elapsed()) << LOG_KV("INFO", oss.str());
 
+    return true;
+}
+
+bool TendermintEngine::handleViewChangeMsg(RoundChangeReq& viewChange_req, TendermintMsgPacket const& tendermintMsg)
+{
+    bool valid = decodeToRequests(viewChange_req, ref(tendermintMsg.data));
+    if (!valid)
+    {
+        return false;
+    }
+    std::ostringstream oss;
+    oss << LOG_KV("blkNum", viewChange_req.height) << LOG_KV("highNum", m_highestBlock.number())
+        << LOG_KV("GenIdx", viewChange_req.idx) << LOG_KV("Cview", viewChange_req.view)
+        << LOG_KV("view", m_view) << LOG_KV("fromIdx", tendermintMsg.node_idx)
+        << LOG_KV("fromNode", tendermintMsg.node_id.abridged()) << LOG_KV("fromIp", tendermintMsg.endpoint)
+        << LOG_KV("hash", viewChange_req.block_hash.abridged()) << LOG_KV("nodeIdx", nodeIdx())
+        << LOG_KV("myNode", m_keyPair.pub().abridged());
+    valid = isValidViewChangeReq(viewChange_req, tendermintMsg.node_idx, oss);
+    if (!valid)
+    {
+        return false;
+    }
+
+    m_reqCache->addViewChangeReq(viewChange_req);
+    if (viewChange_req.view == m_toView)
+    {
+        checkAndChangeView();
+    }
+    else
+    {
+        VIEWTYPE min_view = 0;
+        bool should_trigger = m_reqCache->canTriggerViewChange(
+                min_view, m_f, m_toView, m_highestBlock, m_consensusBlockNumber);
+        if (should_trigger)
+        {
+            m_timeManager.changeView();
+            m_toView = min_view - 1;
+            m_fastViewChange = true;
+            TENDERMINTENGINE_LOG(INFO) << LOG_DESC("Trigger fast-viewchange") << LOG_KV("view", m_view)
+                                 << LOG_KV("toView", m_toView) << LOG_KV("minView", min_view)
+                                 << LOG_KV("INFO", oss.str());
+            m_signalled.notify_all();
+        }
+    }
+    TENDERMINTENGINE_LOG(DEBUG) << LOG_DESC("handleViewChangeMsg Succ ") << oss.str();
     return true;
 }
 
@@ -1072,8 +1306,18 @@ void TendermintEngine::handleMsg(TendermintMsgPacket const& tendermintMsg)
             key = commit_req.uniqueKey();
             tendermint_msg = commit_req;
         }
+        case RoundChangeReqPacket:
+        {
+            RoundChangeReq change_req;
+            handle_res = handleViewChangeMsg(change_req, tendermintMsg);
+            key = change_req.uniqueKey();
+            tendermint_msg = change_req;
+        }
         default: {
             ///TODO LOG
+            TENDERMINTENGINE_LOG(DEBUG) << LOG_DESC("handleMsg:  Err pbft message")
+                                  << LOG_KV("from", tendermintMsg.node_idx) << LOG_KV("nodeIdx", nodeIdx())
+                                  << LOG_KV("myNode", m_keyPair.pub().abridged());
             return;
         }
     }
@@ -1143,18 +1387,18 @@ void TendermintEngine::checkTimeout()
                 m_fastViewChange = false;
             }
             Timer t;
-//            m_round += 1;
+            m_toView += 1;
             m_leaderFailed = true;
             m_timeManager.updateChangeCycle();
             m_blockSync->noteSealingBlockNumber(m_blockChain->number());
             m_timeManager.m_lastConsensusTime = utcTime();
             flag = true;
-//            m_reqCache->removeInvalidViewChange(m_toView, m_highestBlock);
-//            if (!broadcastViewChangeReq())
-//            {
-//                return;
-//            }
-//            checkAndChangeView();
+            m_reqCache->removeInvalidViewChange(m_toView, m_highestBlock);
+            if (!broadcastViewChangeReq())
+            {
+                return;
+            }
+            checkAndChangeView();
             TENDERMINTENGINE_LOG(DEBUG) << LOG_DESC("checkTimeout Succ") << LOG_KV("round", m_round)
                                   << LOG_KV("nodeIdx", nodeIdx())
                                   << LOG_KV("myNode", m_keyPair.pub().abridged())
@@ -1171,7 +1415,7 @@ void TendermintEngine::handleFutureBlock()
     Guard l(m_mutex);
     std::shared_ptr<ProposeReq> p_future_propose =
             m_reqCache->futureProposeCache(m_consensusBlockNumber);
-    if (p_future_propose && p_future_propose->round == m_round)
+    if (p_future_propose && p_future_propose->view == m_view)
     {
         TENDERMINTENGINE_LOG(INFO) << LOG_DESC("handleFutureBlock")
                              << LOG_KV("blkNum", p_future_propose->height)

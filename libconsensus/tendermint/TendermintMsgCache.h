@@ -42,9 +42,9 @@ public:
             case PreCommitReqPacket:
                 insertMessage(x_knownCommit, m_knownCommit, c_knownCommit, key);
                 return true;
-//            case ViewChangeReqPacket:
-//                insertMessage(x_knownViewChange, m_knownViewChange, c_knownViewChange, key);
-//                return true;
+            case RoundChangeReqPacket:
+                insertMessage(x_knownViewChange, m_knownViewChange, c_knownViewChange, key);
+                return true;
             default:
                 LOG(DEBUG) << "Invalid packet type:" << type;
                 return false;
@@ -69,8 +69,8 @@ public:
                 return exists(x_knownVote, m_knownVote, key);
             case PreCommitReqPacket:
                 return exists(x_knownCommit, m_knownCommit, key);
-//            case ViewChangeReqPacket:
-//                return exists(x_knownViewChange, m_knownViewChange, key);
+            case RoundChangeReqPacket:
+                return exists(x_knownViewChange, m_knownViewChange, key);
             default:
                 LOG(DEBUG) << "Invalid packet type:" << type;
                 return false;
@@ -105,8 +105,8 @@ public:
             m_knownVote.clear();
         DEV_GUARDED(x_knownCommit)
             m_knownCommit.clear();
-//        DEV_GUARDED(x_knownViewChange)
-//            m_knownViewChange.clear();
+        DEV_GUARDED(x_knownViewChange)
+            m_knownViewChange.clear();
     }
 
 private:
@@ -123,9 +123,9 @@ private:
     /// cache for the commit packet
     QueueSet<std::string> m_knownCommit;
     /// mutex for m_knownViewChange
-//    Mutex x_knownViewChange;
+    Mutex x_knownViewChange;
     /// cache for the viewchange packet
-//    QueueSet<std::string> m_knownViewChange;
+    QueueSet<std::string> m_knownViewChange;
 
     /// the limit size for propose packet cache
     static const unsigned c_knownPropose = 1024;
@@ -134,7 +134,7 @@ private:
     /// the limit size for commit packet cache
     static const unsigned c_knownCommit = 1024;
     /// the limit size for viewchange packet cache
-//    static const unsigned c_knownViewChange = 1024;
+    static const unsigned c_knownViewChange = 1024;
 };
 
 class TendermintBroadcastCache

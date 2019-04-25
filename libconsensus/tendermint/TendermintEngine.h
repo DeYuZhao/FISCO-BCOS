@@ -48,7 +48,8 @@ public:
         dev::PROTOCOL_ID const& _protocolId, std::string const& _baseDir, KeyPair const& _keyPair,
         h512s const& _sealerList = h512s())
     : ConsensusEngineBase(_service, _txPool, _blockChain, _blockSync, _blockVerifier, _protocolId,
-            _keyPair, _sealerList),m_baseDir(_baseDir)
+            _keyPair, _sealerList),
+            m_baseDir(_baseDir)
     {
         TENDERMINTENGINE_LOG(INFO) << LOG_DESC("Register handler for TENDERMINTEngine");
         m_service->registerHandlerByProtoclID(
@@ -123,11 +124,11 @@ public:
     bool generatePropose(dev::eth::Block const& block);
     /// update the context of Tendermint after commit a block into the block-chain
     void reportBlock(dev::eth::Block const& block) override;
-//    void onViewChange(std::function<void()> const& _f)
-//    {
-//        m_onViewChange = _f;
-//        m_notifyNextLeaderSeal = false;
-//    }
+    void onViewChange(std::function<void()> const& _f)
+    {
+        m_onViewChange = _f;
+        m_notifyNextLeaderSeal = false;
+    }
     void onNotifyNextLeaderReset(std::function<void(dev::h256Hash const& filter)> const& _f)
     {
         m_onNotifyNextLeaderReset = _f;
@@ -151,7 +152,7 @@ public:
         {
             return std::make_pair(false, MAXIDX);
         }
-        return std::make_pair(true, (m_round + m_highestBlock.number()) % m_nodeNum);
+        return std::make_pair(true, (m_view + m_highestBlock.number()) % m_nodeNum);
     }
 
 protected:
@@ -166,7 +167,7 @@ protected:
         ConsensusEngineBase::checkBlockValid(block);
         checkSealerList(block);
     }
-//    bool needOmit(Sealing const& sealing);
+    bool needOmit(Sealing const& sealing);
 
     void getAllNodesViewStatus(json_spirit::Array& status);
 
@@ -176,9 +177,9 @@ protected:
                       std::unordered_set<dev::network::NodeID>(),
                       unsigned const& ttl = 0);
 
-//    void sendViewChangeMsg(dev::network::NodeID const& nodeId);
-//    bool sendMsg(dev::network::NodeID const& nodeId, unsigned const& packetType,
-//                 std::string const& key, bytesConstRef data, unsigned const& ttl = 1);
+    void sendViewChangeMsg(dev::network::NodeID const& nodeId);
+    bool sendMsg(dev::network::NodeID const& nodeId, unsigned const& packetType,
+                 std::string const& key, bytesConstRef data, unsigned const& ttl = 1);
     /// 1. generate and broadcast signReq according to given prepareReq
     /// 2. add the generated signReq into the cache
     bool broadcastVoteReq(ProposeReq const& req);
@@ -187,7 +188,7 @@ protected:
     bool broadcastCommitReq(ProposeReq const& req);
     /// broadcast view change message
 //    bool shouldBroadcastViewChange();
-//    bool broadcastViewChangeReq();
+    bool broadcastViewChangeReq();
     /// handler called when receiving data from the network
     void onRecvTendermintMessage(dev::p2p::NetworkException exception,
                            std::shared_ptr<dev::p2p::P2PSession> session, dev::p2p::P2PMessage::Ptr message);
@@ -200,14 +201,14 @@ protected:
     /// heck the size of the collected signReq is over 2/3 or not
     bool handleVoteMsg(PreVoteReq& signReq, TendermintMsgPacket const& tendermintMsg);
     bool handleCommitMsg(PreCommitReq& commitReq, TendermintMsgPacket const& tendermintMsg);
-//    bool handleViewChangeMsg(ViewChangeReq& viewChangeReq, PBFTMsgPacket const& pbftMsg);
+    bool handleViewChangeMsg(RoundChangeReq& viewChangeReq, TendermintMsgPacket const& tendermintMsg);
     void handleMsg(TendermintMsgPacket const& tendermintMsg);
-//    void catchupView(ViewChangeReq const& req, std::ostringstream& oss);
+    void catchupView(RoundChangeReq const& req, std::ostringstream& oss);
     void checkAndCommit();
 
     /// if collect >= 2/3 SignReq and CommitReq, then callback this function to commit block
     void checkAndSave();
-//    void checkAndChangeView();
+    void checkAndChangeView();
 
 protected:
     void initTendermintEnv();
@@ -382,21 +383,21 @@ protected:
             return CheckValid::T_INVALID;
         }
         /// check view
+        if (m_reqCache->proposeCache().view != req.view)
+        {
+            TENDERMINTENGINE_LOG(TRACE) << LOG_DESC("checkReq: Recv req with unconsistent view")
+                                  << LOG_KV("prepView", m_reqCache->proposeCache().view)
+                                  << LOG_KV("view", req.view) << LOG_KV("INFO", oss.str());
+            return CheckValid ::T_INVALID;
+        }
+        /// check round
 //        if (m_reqCache->proposeCache().view != req.view)
 //        {
-//            TENDERMINTENGINE_LOG(TRACE) << LOG_DESC("checkReq: Recv req with unconsistent view")
-//                                  << LOG_KV("prepView", m_reqCache->proposeCache().view)
-//                                  << LOG_KV("view", req.view) << LOG_KV("INFO", oss.str());
-//            return CheckResult::INVALID;
+//            TENDERMINTENGINE_LOG(TRACE) << LOG_DESC("checkReq: Recv req with unconsistent round")
+//                                        << LOG_KV("prepRound", m_reqCache->proposeCache().view)
+//                                        << LOG_KV("round", req.round) << LOG_KV("INFO", oss.str());
+//            return CheckValid::T_INVALID;
 //        }
-        /// check round
-        if (m_reqCache->proposeCache().round != req.round)
-        {
-            TENDERMINTENGINE_LOG(TRACE) << LOG_DESC("checkReq: Recv req with unconsistent round")
-                                        << LOG_KV("prepRound", m_reqCache->proposeCache().round)
-                                        << LOG_KV("round", req.round) << LOG_KV("INFO", oss.str());
-            return CheckValid::T_INVALID;
-        }
         if (!checkSign(req))
         {
             TENDERMINTENGINE_LOG(TRACE) << LOG_DESC("checkReq:  invalid sign")
@@ -408,14 +409,14 @@ protected:
 
     CheckValid isValidVoteReq(PreVoteReq const& req, std::ostringstream& oss) const;
     CheckValid isValidCommitReq(PreCommitReq const& req, std::ostringstream& oss) const;
-//    bool isValidViewChangeReq(
-//            ViewChangeReq const& req, IDXTYPE const& source, std::ostringstream& oss);
+    bool isValidViewChangeReq(
+            RoundChangeReq const& req, IDXTYPE const& source, std::ostringstream& oss);
 
     template <class T>
     inline bool hasConsensused(T const& req) const
     {
         if (req.height < m_consensusBlockNumber ||
-            (req.height == m_consensusBlockNumber && req.round < m_round))
+            (req.height == m_consensusBlockNumber && req.view < m_view))
         {
             return true;
         }
@@ -430,7 +431,7 @@ protected:
     template <typename T>
     inline bool isFutureBlock(T const& req) const
     {
-        if (req.height >= m_consensusBlockNumber || req.round > m_round)
+        if (req.height >= m_consensusBlockNumber || req.view > m_view)
         {
             return true;
         }
@@ -441,7 +442,7 @@ protected:
     inline bool isFuturePropose(T const& req) const
     {
         if (req.height > m_consensusBlockNumber ||
-            (req.height == m_consensusBlockNumber && req.round > m_round))
+            (req.height == m_consensusBlockNumber && req.view > m_view))
         {
             return true;
         }
@@ -481,21 +482,21 @@ protected:
     /// check block
     bool checkBlock(dev::eth::Block const& block);
     void execBlock(Sealing& sealing, ProposeReq const& req, std::ostringstream& oss);
-//    void changeViewForEmptyBlock()
-//    {
-//        m_timeManager.changeView();
-//        m_timeManager.m_changeCycle = 0;
-//        m_fastViewChange = true;
-//        m_signalled.notify_all();
-//    }
-
-    void changeRoundForEmptyBlock()
+    void changeViewForEmptyBlock()
     {
-        m_timeManager.changeRound();
+        m_timeManager.changeView();
         m_timeManager.m_changeCycle = 0;
         m_fastViewChange = true;
         m_signalled.notify_all();
     }
+
+//    void changeRoundForEmptyBlock()
+//    {
+//        m_timeManager.changeRound();
+//        m_timeManager.m_changeCycle = 0;
+//        m_fastViewChange = true;
+//        m_signalled.notify_all();
+//    }
 
     void notifySealing(dev::eth::Block const& block);
     virtual bool isDiskSpaceEnough(std::string const& path)
@@ -503,21 +504,21 @@ protected:
         return boost::filesystem::space(path).available > 1024;
     }
 
-//    void updateViewMap(IDXTYPE const& idx, VIEWTYPE const& view)
-//    {
-//        WriteGuard l(x_viewMap);
-//        m_viewMap[idx] = view;
-//    }
-
-    void updateRoundMap(IDXTYPE const& idx, int64_t const& round)
+    void updateViewMap(IDXTYPE const& idx, VIEWTYPE const& view)
     {
-        WriteGuard l(x_roundMap);
-        m_roundMap[idx] = round;
+        WriteGuard l(x_viewMap);
+        m_viewMap[idx] = view;
     }
 
+//    void updateRoundMap(IDXTYPE const& idx, int64_t const& round)
+//    {
+//        WriteGuard l(x_roundMap);
+//        m_roundMap[idx] = round;
+//    }
+
 protected:
-//    VIEWTYPE m_view = 0;
-//    VIEWTYPE m_toView = 0;
+    VIEWTYPE m_view = 0;
+    VIEWTYPE m_toView = 0;
     int64_t m_round = 0;
     std::string m_baseDir;
     bool m_leaderFailed = false;
@@ -542,7 +543,7 @@ protected:
     std::condition_variable m_signalled;
     Mutex x_signalled;
 
-//    std::function<void()> m_onViewChange;
+    std::function<void()> m_onViewChange;
     std::function<void(dev::h256Hash const& filter)> m_onNotifyNextLeaderReset;
 
     /// for output time-out caused viewchange
@@ -552,8 +553,8 @@ protected:
     uint8_t maxTTL = MAXTTL;
 
     /// map between nodeIdx to view
-//    mutable SharedMutex x_viewMap;
-//    std::map<IDXTYPE, VIEWTYPE> m_viewMap;
+    mutable SharedMutex x_viewMap;
+    std::map<IDXTYPE, VIEWTYPE> m_viewMap;
 
     /// map between nodeIdx to round
     mutable SharedMutex x_roundMap;
