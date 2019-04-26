@@ -224,6 +224,7 @@ namespace consensus
 /// sealing the generated block into prepareReq and push its to msgQueue
     bool TendermintEngine::generatePrepare(Block const& block)
     {
+        TENDERMINTENGINE_LOG(DEBUG) << LOG_DESC("Funcation: generatePrepare");
         Guard l(m_mutex);
         m_notifyNextLeaderSeal = false;
         ProposeReq prepare_req(block, m_keyPair, m_view, nodeIdx());
@@ -401,6 +402,8 @@ namespace consensus
     bool TendermintEngine::broadcastMsg(unsigned const& packetType, std::string const& key,
                                   bytesConstRef data, std::unordered_set<h512> const& filter, unsigned const& ttl)
     {
+        TENDERMINTENGINE_LOG(INFO) << LOG_DESC("Function:  broadcastMsg")
+                                   << LOG_KV("packetType", packetType);
         auto sessions = m_service->sessionInfosByProtocolID(m_protocolId);
         m_connectedNode = sessions.size();
         for (auto session : sessions)
@@ -577,6 +580,7 @@ namespace consensus
  */
     void TendermintEngine::notifySealing(dev::eth::Block const& block)
     {
+        TENDERMINTENGINE_LOG(INFO) << LOG_DESC("Function:  notifySealing");
         if (!m_onNotifyNextLeaderReset)
         {
             return;
@@ -654,6 +658,7 @@ namespace consensus
 /// check whether the block is empty
     bool TendermintEngine::needOmit(Sealing const& sealing)
     {
+        TENDERMINTENGINE_LOG(INFO) << LOG_DESC("Function:  needOmit");
         if (sealing.block.getTransactionSize() == 0 && m_omitEmptyBlock)
         {
             TENDERMINTENGINE_LOG(TRACE) << LOG_DESC("needOmit")
@@ -679,6 +684,7 @@ namespace consensus
     void TendermintEngine::onRecvPBFTMessage(
             NetworkException, std::shared_ptr<P2PSession> session, P2PMessage::Ptr message)
     {
+        TENDERMINTENGINE_LOG(INFO) << LOG_DESC("Function:  onRecvPBFTMessage");
         if (nodeIdx() == MAXIDX)
         {
             TENDERMINTENGINE_LOG(TRACE) << LOG_DESC(
@@ -929,6 +935,7 @@ namespace consensus
 /// 5. clear all caches related to prepareReq and signReq
     void TendermintEngine::reportBlockWithoutLock(Block const& block)
     {
+        TENDERMINTENGINE_LOG(INFO) << LOG_DESC("Function:  reportBlockWithoutLock");
         if (m_blockChain->number() == 0 || m_highestBlock.number() < block.blockHeader().number())
         {
             /// update the highest block
@@ -1193,6 +1200,7 @@ namespace consensus
 
     void TendermintEngine::catchupView(RoundChangeReq const& req, std::ostringstream& oss)
     {
+        TENDERMINTENGINE_LOG(INFO) << LOG_DESC("Function:  catchupView");
         if (req.view + 1 < m_toView)
         {
             TENDERMINTENGINE_LOG(DEBUG) << LOG_DESC("catchupView") << LOG_KV("toView", m_toView)
@@ -1208,43 +1216,44 @@ namespace consensus
 
     void TendermintEngine::checkAndChangeView()
     {
-        Sealing sealing;
-        sealing.block.header().populateFromParent(m_blockChain->getBlockByNumber(m_blockChain->number())->header());
-        uint64_t parentTime = m_blockChain->getBlockByNumber(m_blockChain->number())->header().timestamp();
-        sealing.block.header().setTimestamp(std::max(parentTime + 1, utcTime()));
-        std::shared_ptr<dev::consensus::ConsensusInterface> m_consensusEngine;
-
-        BlockHeader& header = sealing.block.header();
-        header.setSealerList(m_sealerList);
-        header.setSealer(nodeIdx());
-        header.setLogBloom(LogBloom());
-        header.setGasUsed(u256(0));
-        std::vector<bytes> extra_data;
-        header.setExtraData(extra_data);
-        sealing.block.calTransactionRoot();
-        generatePrepare(sealing.block);
-//        IDXTYPE count = m_reqCache->getViewChangeSize(m_toView);
-//        if (count >= minValidNodes() - 1)
-//        {
-//            TENDERMINTENGINE_LOG(INFO) << LOG_DESC("checkAndChangeView: Reach consensus")
-//                                 << LOG_KV("to_view", m_toView);
-//            /// reach to consensue dure to fast view change
-//            if (m_timeManager.m_lastSignTime == 0)
-//            {
-//                m_fastViewChange = false;
-//            }
-//            m_leaderFailed = false;
-//            m_timeManager.m_lastConsensusTime = utcTime();
-//            m_view = m_toView;
-//            m_notifyNextLeaderSeal = false;
-//            m_reqCache->triggerViewChange(m_view);
-//            m_blockSync->noteSealingBlockNumber(m_blockChain->number());
-//        }
+//        Sealing sealing;
+//        sealing.block.header().populateFromParent(m_blockChain->getBlockByNumber(m_blockChain->number())->header());
+//        uint64_t parentTime = m_blockChain->getBlockByNumber(m_blockChain->number())->header().timestamp();
+//        sealing.block.header().setTimestamp(std::max(parentTime + 1, utcTime()));
+//        std::shared_ptr<dev::consensus::ConsensusInterface> m_consensusEngine;
+//
+//        BlockHeader& header = sealing.block.header();
+//        header.setSealerList(m_sealerList);
+//        header.setSealer(nodeIdx());
+//        header.setLogBloom(LogBloom());
+//        header.setGasUsed(u256(0));
+//        std::vector<bytes> extra_data;
+//        header.setExtraData(extra_data);
+//        sealing.block.calTransactionRoot();
+//        generatePrepare(sealing.block);
+        IDXTYPE count = m_reqCache->getViewChangeSize(m_toView);
+        if (count >= minValidNodes() - 1)
+        {
+            TENDERMINTENGINE_LOG(INFO) << LOG_DESC("checkAndChangeView: Reach consensus")
+                                 << LOG_KV("to_view", m_toView);
+            /// reach to consensue dure to fast view change
+            if (m_timeManager.m_lastSignTime == 0)
+            {
+                m_fastViewChange = false;
+            }
+            m_leaderFailed = false;
+            m_timeManager.m_lastConsensusTime = utcTime();
+            m_view = m_toView;
+            m_notifyNextLeaderSeal = false;
+            m_reqCache->triggerViewChange(m_view);
+            m_blockSync->noteSealingBlockNumber(m_blockChain->number());
+        }
     }
 
 /// collect all caches
     void TendermintEngine::collectGarbage()
     {
+        TENDERMINTENGINE_LOG(INFO) << LOG_DESC("Function:  collectGarbage");
         Guard l(m_mutex);
         if (!m_highestBlock)
         {
@@ -1264,6 +1273,7 @@ namespace consensus
 
     void TendermintEngine::checkTimeout()
     {
+        TENDERMINTENGINE_LOG(INFO) << LOG_DESC("Function:  checkTimeout");
         bool flag = false;
         {
             Guard l(m_mutex);
@@ -1282,10 +1292,10 @@ namespace consensus
                 m_timeManager.m_lastConsensusTime = utcTime();
                 flag = true;
                 m_reqCache->removeInvalidViewChange(m_toView, m_highestBlock);
-//                if (!broadcastViewChangeReq())
-//                {
-//                    return;
-//                }
+                if (!broadcastViewChangeReq())
+                {
+                    return;
+                }
                 checkAndChangeView();
                 TENDERMINTENGINE_LOG(DEBUG) << LOG_DESC("checkTimeout Succ") << LOG_KV("view", m_view)
                                       << LOG_KV("toView", m_toView) << LOG_KV("nodeIdx", nodeIdx())
@@ -1424,6 +1434,7 @@ namespace consensus
 /// get the status of PBFT consensus
     const std::string TendermintEngine::consensusStatus()
     {
+        TENDERMINTENGINE_LOG(INFO) << LOG_DESC("Function:  consensusStatus");
         json_spirit::Array status;
         json_spirit::Object statusObj;
         getBasicConsensusStatus(statusObj);
