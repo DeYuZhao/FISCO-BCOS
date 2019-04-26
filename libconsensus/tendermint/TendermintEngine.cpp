@@ -1399,8 +1399,8 @@ namespace consensus
                     std::unique_lock<std::mutex> l(x_signalled);
                     m_signalled.wait_for(l, std::chrono::milliseconds(5));
                 }
-                checkTimeout();
-                handleFutureBlock();
+//                checkTimeout();
+//                handleFutureBlock();
                 collectGarbage();
             }
             catch (std::exception& _e)
