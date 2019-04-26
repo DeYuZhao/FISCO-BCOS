@@ -1272,7 +1272,6 @@ namespace consensus
 
     void TendermintEngine::checkTimeout()
     {
-        TENDERMINTENGINE_LOG(INFO) << LOG_DESC("Function:  checkTimeout");
         bool flag = false;
         {
             Guard l(m_mutex);
@@ -1296,7 +1295,7 @@ namespace consensus
                     return;
                 }
                 checkAndChangeView();
-                TENDERMINTENGINE_LOG(DEBUG) << LOG_DESC("checkTimeout Succ") << LOG_KV("view", m_view)
+                TENDERMINTENGINE_LOG(INFO) << LOG_DESC("checkTimeout Succ") << LOG_KV("view", m_view)
                                       << LOG_KV("toView", m_toView) << LOG_KV("nodeIdx", nodeIdx())
                                       << LOG_KV("myNode", m_keyPair.pub().abridged())
                                       << LOG_KV("timecost", t.elapsed() * 1000);
