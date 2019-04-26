@@ -697,7 +697,7 @@ namespace consensus
         {
             return;
         }
-        if (tendermint_msg.packet_id <= RoundChangeReqPacket)
+        if (tendermint_msg.packet_id <= PreCommitReqPacket)
         {
             m_msgQueue.push(tendermint_msg);
             /// notify to handleMsg after push new PBFTMsgPacket into m_msgQueue
@@ -1290,11 +1290,27 @@ namespace consensus
                 m_timeManager.m_lastConsensusTime = utcTime();
                 flag = true;
                 m_reqCache->removeInvalidViewChange(m_toView, m_highestBlock);
-                if (!broadcastViewChangeReq())
-                {
-                    return;
-                }
-                checkAndChangeView();
+
+                Block block = Block();
+                block.header().populateFromParent(m_blockChain->getBlockByNumber(m_blockChain->number())->header());
+                uint64_t parentTime =
+                        m_blockChain->getBlockByNumber(m_blockChain->number())->header().timestamp();
+                block.header().setTimestamp(parentTime + 1);
+                block.calTransactionRoot();
+                ProposeReq prepare_req(block, m_keyPair, m_view, nodeIdx());
+                bytes prepare_data;
+                prepare_req.encode(prepare_data);
+                bool succ = broadcastMsg(ProposeReqPacket, prepare_req.uniqueKey(), ref(prepare_data));
+                if (succ)
+                    handlePrepareMsg(prepare_req);
+
+                m_leaderFailed = false;
+                m_timeManager.m_lastConsensusTime = utcTime();
+                m_view = m_toView;
+                m_notifyNextLeaderSeal = false;
+                m_reqCache->triggerViewChange(m_view);
+                m_blockSync->noteSealingBlockNumber(m_blockChain->number());
+
                 TENDERMINTENGINE_LOG(INFO) << LOG_DESC("checkTimeout Succ") << LOG_KV("view", m_view)
                                       << LOG_KV("toView", m_toView) << LOG_KV("nodeIdx", nodeIdx())
                                       << LOG_KV("myNode", m_keyPair.pub().abridged())
