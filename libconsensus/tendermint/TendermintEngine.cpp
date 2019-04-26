@@ -1290,11 +1290,11 @@ namespace consensus
                 m_timeManager.m_lastConsensusTime = utcTime();
                 flag = true;
                 m_reqCache->removeInvalidViewChange(m_toView, m_highestBlock);
-//                if (!broadcastViewChangeReq())
-//                {
-//                    return;
-//                }
-//                checkAndChangeView();
+                if (!broadcastViewChangeReq())
+                {
+                    return;
+                }
+                checkAndChangeView();
                 TENDERMINTENGINE_LOG(INFO) << LOG_DESC("checkTimeout Succ") << LOG_KV("view", m_view)
                                       << LOG_KV("toView", m_toView) << LOG_KV("nodeIdx", nodeIdx())
                                       << LOG_KV("myNode", m_keyPair.pub().abridged())
