@@ -1253,7 +1253,6 @@ namespace consensus
 /// collect all caches
     void TendermintEngine::collectGarbage()
     {
-        TENDERMINTENGINE_LOG(INFO) << LOG_DESC("Function:  collectGarbage");
         Guard l(m_mutex);
         if (!m_highestBlock)
         {
@@ -1399,8 +1398,8 @@ namespace consensus
                     std::unique_lock<std::mutex> l(x_signalled);
                     m_signalled.wait_for(l, std::chrono::milliseconds(5));
                 }
-//                checkTimeout();
-//                handleFutureBlock();
+                checkTimeout();
+                handleFutureBlock();
                 collectGarbage();
             }
             catch (std::exception& _e)
