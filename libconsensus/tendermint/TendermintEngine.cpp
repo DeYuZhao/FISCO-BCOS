@@ -309,84 +309,84 @@ namespace consensus
 
 
 /// send view change message to the given node
-    void TendermintEngine::sendViewChangeMsg(dev::network::NodeID const& nodeId)
-    {
-        RoundChangeReq req(
-                m_keyPair, m_highestBlock.number(), m_toView, nodeIdx(), m_highestBlock.hash());
-        TENDERMINTENGINE_LOG(DEBUG) << LOG_DESC("sendViewChangeMsg: send viewchange to started node")
-                              << LOG_KV("v", m_view) << LOG_KV("toV", m_toView)
-                              << LOG_KV("highNum", m_highestBlock.number())
-                              << LOG_KV("peerNode", nodeId.abridged())
-                              << LOG_KV("hash", req.block_hash.abridged())
-                              << LOG_KV("nodeIdx", nodeIdx())
-                              << LOG_KV("myNode", m_keyPair.pub().abridged());
+//    void TendermintEngine::sendViewChangeMsg(dev::network::NodeID const& nodeId)
+//    {
+//        RoundChangeReq req(
+//                m_keyPair, m_highestBlock.number(), m_toView, nodeIdx(), m_highestBlock.hash());
+//        TENDERMINTENGINE_LOG(DEBUG) << LOG_DESC("sendViewChangeMsg: send viewchange to started node")
+//                              << LOG_KV("v", m_view) << LOG_KV("toV", m_toView)
+//                              << LOG_KV("highNum", m_highestBlock.number())
+//                              << LOG_KV("peerNode", nodeId.abridged())
+//                              << LOG_KV("hash", req.block_hash.abridged())
+//                              << LOG_KV("nodeIdx", nodeIdx())
+//                              << LOG_KV("myNode", m_keyPair.pub().abridged());
+//
+//        bytes view_change_data;
+//        req.encode(view_change_data);
+//        sendMsg(nodeId, RoundChangeReqPacket, req.uniqueKey(), ref(view_change_data));
+//    }
 
-        bytes view_change_data;
-        req.encode(view_change_data);
-        sendMsg(nodeId, RoundChangeReqPacket, req.uniqueKey(), ref(view_change_data));
-    }
-
-    bool TendermintEngine::broadcastViewChangeReq()
-    {
-        RoundChangeReq req(
-                m_keyPair, m_highestBlock.number(), m_toView, nodeIdx(), m_highestBlock.hash());
-        TENDERMINTENGINE_LOG(DEBUG) << LOG_DESC("broadcastViewChangeReq ") << LOG_KV("v", m_view)
-                              << LOG_KV("toV", m_toView) << LOG_KV("highNum", m_highestBlock.number())
-                              << LOG_KV("hash", req.block_hash.abridged())
-                              << LOG_KV("nodeIdx", nodeIdx())
-                              << LOG_KV("myNode", m_keyPair.pub().abridged());
-        /// view change not caused by fast view change
-        if (!m_fastViewChange)
-        {
-            TENDERMINTENGINE_LOG(WARNING) << LOG_DESC("ViewChangeWarning: not caused by omit empty block ")
-                                    << LOG_KV("v", m_view) << LOG_KV("toV", m_toView)
-                                    << LOG_KV("highNum", m_highestBlock.number())
-                                    << LOG_KV("hash", req.block_hash.abridged())
-                                    << LOG_KV("nodeIdx", nodeIdx())
-                                    << LOG_KV("myNode", m_keyPair.pub().abridged());
-        }
-
-        bytes view_change_data;
-        req.encode(view_change_data);
-        return broadcastMsg(RoundChangeReqPacket, req.uniqueKey(), ref(view_change_data));
-    }
+//    bool TendermintEngine::broadcastViewChangeReq()
+//    {
+//        RoundChangeReq req(
+//                m_keyPair, m_highestBlock.number(), m_toView, nodeIdx(), m_highestBlock.hash());
+//        TENDERMINTENGINE_LOG(DEBUG) << LOG_DESC("broadcastViewChangeReq ") << LOG_KV("v", m_view)
+//                              << LOG_KV("toV", m_toView) << LOG_KV("highNum", m_highestBlock.number())
+//                              << LOG_KV("hash", req.block_hash.abridged())
+//                              << LOG_KV("nodeIdx", nodeIdx())
+//                              << LOG_KV("myNode", m_keyPair.pub().abridged());
+//        /// view change not caused by fast view change
+//        if (!m_fastViewChange)
+//        {
+//            TENDERMINTENGINE_LOG(WARNING) << LOG_DESC("ViewChangeWarning: not caused by omit empty block ")
+//                                    << LOG_KV("v", m_view) << LOG_KV("toV", m_toView)
+//                                    << LOG_KV("highNum", m_highestBlock.number())
+//                                    << LOG_KV("hash", req.block_hash.abridged())
+//                                    << LOG_KV("nodeIdx", nodeIdx())
+//                                    << LOG_KV("myNode", m_keyPair.pub().abridged());
+//        }
+//
+//        bytes view_change_data;
+//        req.encode(view_change_data);
+//        return broadcastMsg(RoundChangeReqPacket, req.uniqueKey(), ref(view_change_data));
+//    }
 
 /// set default ttl to 1 to in case of forward-broadcast
-    bool TendermintEngine::sendMsg(dev::network::NodeID const& nodeId, unsigned const& packetType,
-                             std::string const& key, bytesConstRef data, unsigned const& ttl)
-    {
-        /// is sealer?
-        if (getIndexBySealer(nodeId) < 0)
-        {
-            return true;
-        }
-        /// packet has been broadcasted?
-        if (broadcastFilter(nodeId, packetType, key))
-        {
-            return true;
-        }
-        auto sessions = m_service->sessionInfosByProtocolID(m_protocolId);
-        if (sessions.size() == 0)
-        {
-            return false;
-        }
-        for (auto session : sessions)
-        {
-            if (session.nodeID == nodeId)
-            {
-                m_service->asyncSendMessageByNodeID(
-                        session.nodeID, transDataToMessage(data, packetType, ttl), nullptr);
-                TENDERMINTENGINE_LOG(DEBUG) << LOG_DESC("sendMsg") << LOG_KV("packetType", packetType)
-                                      << LOG_KV("dstNodeId", nodeId.abridged())
-                                      << LOG_KV("remote_endpoint", session.nodeIPEndpoint.name())
-                                      << LOG_KV("nodeIdx", nodeIdx())
-                                      << LOG_KV("myNode", m_keyPair.pub().abridged());
-                broadcastMark(session.nodeID, packetType, key);
-                return true;
-            }
-        }
-        return false;
-    }
+//    bool TendermintEngine::sendMsg(dev::network::NodeID const& nodeId, unsigned const& packetType,
+//                             std::string const& key, bytesConstRef data, unsigned const& ttl)
+//    {
+//        /// is sealer?
+//        if (getIndexBySealer(nodeId) < 0)
+//        {
+//            return true;
+//        }
+//        /// packet has been broadcasted?
+//        if (broadcastFilter(nodeId, packetType, key))
+//        {
+//            return true;
+//        }
+//        auto sessions = m_service->sessionInfosByProtocolID(m_protocolId);
+//        if (sessions.size() == 0)
+//        {
+//            return false;
+//        }
+//        for (auto session : sessions)
+//        {
+//            if (session.nodeID == nodeId)
+//            {
+//                m_service->asyncSendMessageByNodeID(
+//                        session.nodeID, transDataToMessage(data, packetType, ttl), nullptr);
+//                TENDERMINTENGINE_LOG(DEBUG) << LOG_DESC("sendMsg") << LOG_KV("packetType", packetType)
+//                                      << LOG_KV("dstNodeId", nodeId.abridged())
+//                                      << LOG_KV("remote_endpoint", session.nodeIPEndpoint.name())
+//                                      << LOG_KV("nodeIdx", nodeIdx())
+//                                      << LOG_KV("myNode", m_keyPair.pub().abridged());
+//                broadcastMark(session.nodeID, packetType, key);
+//                return true;
+//            }
+//        }
+//        return false;
+//    }
 
 /**
  * @brief: broadcast specified message to all-peers with cache-filter and specified filter
@@ -1109,146 +1109,146 @@ namespace consensus
         return result;
     }
 
-    bool TendermintEngine::handleViewChangeMsg(RoundChangeReq& viewChange_req, TendermintMsgPacket const& tendermintMsg)
-    {
-        bool valid = decodeToRequests(viewChange_req, ref(tendermintMsg.data));
-        if (!valid)
-        {
-            return false;
-        }
-        std::ostringstream oss;
-        oss << LOG_KV("blkNum", viewChange_req.height) << LOG_KV("highNum", m_highestBlock.number())
-            << LOG_KV("GenIdx", viewChange_req.idx) << LOG_KV("Cview", viewChange_req.view)
-            << LOG_KV("view", m_view) << LOG_KV("fromIdx", tendermintMsg.node_idx)
-            << LOG_KV("fromNode", tendermintMsg.node_id.abridged()) << LOG_KV("fromIp", tendermintMsg.endpoint)
-            << LOG_KV("hash", viewChange_req.block_hash.abridged()) << LOG_KV("nodeIdx", nodeIdx())
-            << LOG_KV("myNode", m_keyPair.pub().abridged());
-        valid = isValidViewChangeReq(viewChange_req, tendermintMsg.node_idx, oss);
-        if (!valid)
-        {
-            return false;
-        }
-
-        m_reqCache->addViewChangeReq(viewChange_req);
-        if (viewChange_req.view == m_toView)
-        {
-            checkAndChangeView();
-        }
-        else
-        {
-            VIEWTYPE min_view = 0;
-            bool should_trigger = m_reqCache->canTriggerViewChange(
-                    min_view, m_f, m_toView, m_highestBlock, m_consensusBlockNumber);
-            if (should_trigger)
-            {
-                m_timeManager.changeView();
-                m_toView = min_view - 1;
-                m_fastViewChange = true;
-                TENDERMINTENGINE_LOG(INFO) << LOG_DESC("Trigger fast-viewchange") << LOG_KV("view", m_view)
-                                     << LOG_KV("toView", m_toView) << LOG_KV("minView", min_view)
-                                     << LOG_KV("INFO", oss.str());
-                m_signalled.notify_all();
-            }
-        }
-        TENDERMINTENGINE_LOG(DEBUG) << LOG_DESC("handleViewChangeMsg Succ ") << oss.str();
-        return true;
-    }
-
-    bool TendermintEngine::isValidViewChangeReq(
-            RoundChangeReq const& req, IDXTYPE const& source, std::ostringstream& oss)
-    {
-        if (m_reqCache->isExistViewChange(req))
-        {
-            TENDERMINTENGINE_LOG(TRACE) << LOG_DESC("InvalidViewChangeReq: Duplicated")
-                                  << LOG_KV("INFO", oss.str());
-            return false;
-        }
-        if (req.idx == nodeIdx())
-        {
-            TENDERMINTENGINE_LOG(TRACE) << LOG_DESC("InvalidViewChangeReq: own req")
-                                  << LOG_KV("INFO", oss.str());
-            return false;
-        }
-        if (req.view + 1 < m_toView && req.idx == source)
-        {
-            catchupView(req, oss);
-        }
-        /// check view and block height
-        if (req.height < m_highestBlock.number() || req.view <= m_view)
-        {
-            TENDERMINTENGINE_LOG(TRACE) << LOG_DESC("InvalidViewChangeReq: invalid view or height")
-                                  << LOG_KV("INFO", oss.str());
-            return false;
-        }
-        /// check block hash
-        if ((req.height == m_highestBlock.number() && req.block_hash != m_highestBlock.hash()) ||
-            (m_blockChain->getBlockByHash(req.block_hash) == nullptr))
-        {
-            TENDERMINTENGINE_LOG(TRACE) << LOG_DESC("InvalidViewChangeReq, invalid hash")
-                                  << LOG_KV("highHash", m_highestBlock.hash().abridged())
-                                  << LOG_KV("INFO", oss.str());
-            return false;
-        }
-        if (!checkSign(req))
-        {
-            TENDERMINTENGINE_LOG(TRACE) << LOG_DESC("InvalidViewChangeReq: invalid sign")
-                                  << LOG_KV("INFO", oss.str());
-            return false;
-        }
-        return true;
-    }
-
-    void TendermintEngine::catchupView(RoundChangeReq const& req, std::ostringstream& oss)
-    {
-        TENDERMINTENGINE_LOG(INFO) << LOG_DESC("Function:  catchupView");
-        if (req.view + 1 < m_toView)
-        {
-            TENDERMINTENGINE_LOG(DEBUG) << LOG_DESC("catchupView") << LOG_KV("toView", m_toView)
-                                  << LOG_KV("INFO", oss.str());
-            dev::network::NodeID nodeId;
-            bool succ = getNodeIDByIndex(nodeId, req.idx);
-            if (succ)
-            {
-                sendViewChangeMsg(nodeId);
-            }
-        }
-    }
-
-    void TendermintEngine::checkAndChangeView()
-    {
-//        Sealing sealing;
-//        sealing.block.header().populateFromParent(m_blockChain->getBlockByNumber(m_blockChain->number())->header());
-//        uint64_t parentTime = m_blockChain->getBlockByNumber(m_blockChain->number())->header().timestamp();
-//        sealing.block.header().setTimestamp(std::max(parentTime + 1, utcTime()));
-//        std::shared_ptr<dev::consensus::ConsensusInterface> m_consensusEngine;
+//    bool TendermintEngine::handleViewChangeMsg(RoundChangeReq& viewChange_req, TendermintMsgPacket const& tendermintMsg)
+//    {
+//        bool valid = decodeToRequests(viewChange_req, ref(tendermintMsg.data));
+//        if (!valid)
+//        {
+//            return false;
+//        }
+//        std::ostringstream oss;
+//        oss << LOG_KV("blkNum", viewChange_req.height) << LOG_KV("highNum", m_highestBlock.number())
+//            << LOG_KV("GenIdx", viewChange_req.idx) << LOG_KV("Cview", viewChange_req.view)
+//            << LOG_KV("view", m_view) << LOG_KV("fromIdx", tendermintMsg.node_idx)
+//            << LOG_KV("fromNode", tendermintMsg.node_id.abridged()) << LOG_KV("fromIp", tendermintMsg.endpoint)
+//            << LOG_KV("hash", viewChange_req.block_hash.abridged()) << LOG_KV("nodeIdx", nodeIdx())
+//            << LOG_KV("myNode", m_keyPair.pub().abridged());
+//        valid = isValidViewChangeReq(viewChange_req, tendermintMsg.node_idx, oss);
+//        if (!valid)
+//        {
+//            return false;
+//        }
 //
-//        BlockHeader& header = sealing.block.header();
-//        header.setSealerList(m_sealerList);
-//        header.setSealer(nodeIdx());
-//        header.setLogBloom(LogBloom());
-//        header.setGasUsed(u256(0));
-//        std::vector<bytes> extra_data;
-//        header.setExtraData(extra_data);
-//        sealing.block.calTransactionRoot();
-//        generatePrepare(sealing.block);
-        IDXTYPE count = m_reqCache->getViewChangeSize(m_toView);
-        if (count >= minValidNodes() - 1)
-        {
-            TENDERMINTENGINE_LOG(INFO) << LOG_DESC("checkAndChangeView: Reach consensus")
-                                 << LOG_KV("to_view", m_toView);
-            /// reach to consensue dure to fast view change
-            if (m_timeManager.m_lastSignTime == 0)
-            {
-                m_fastViewChange = false;
-            }
-            m_leaderFailed = false;
-            m_timeManager.m_lastConsensusTime = utcTime();
-            m_view = m_toView;
-            m_notifyNextLeaderSeal = false;
-            m_reqCache->triggerViewChange(m_view);
-            m_blockSync->noteSealingBlockNumber(m_blockChain->number());
-        }
-    }
+//        m_reqCache->addViewChangeReq(viewChange_req);
+//        if (viewChange_req.view == m_toView)
+//        {
+//            checkAndChangeView();
+//        }
+//        else
+//        {
+//            VIEWTYPE min_view = 0;
+//            bool should_trigger = m_reqCache->canTriggerViewChange(
+//                    min_view, m_f, m_toView, m_highestBlock, m_consensusBlockNumber);
+//            if (should_trigger)
+//            {
+//                m_timeManager.changeView();
+//                m_toView = min_view - 1;
+//                m_fastViewChange = true;
+//                TENDERMINTENGINE_LOG(INFO) << LOG_DESC("Trigger fast-viewchange") << LOG_KV("view", m_view)
+//                                     << LOG_KV("toView", m_toView) << LOG_KV("minView", min_view)
+//                                     << LOG_KV("INFO", oss.str());
+//                m_signalled.notify_all();
+//            }
+//        }
+//        TENDERMINTENGINE_LOG(DEBUG) << LOG_DESC("handleViewChangeMsg Succ ") << oss.str();
+//        return true;
+//    }
+
+//    bool TendermintEngine::isValidViewChangeReq(
+//            RoundChangeReq const& req, IDXTYPE const& source, std::ostringstream& oss)
+//    {
+//        if (m_reqCache->isExistViewChange(req))
+//        {
+//            TENDERMINTENGINE_LOG(TRACE) << LOG_DESC("InvalidViewChangeReq: Duplicated")
+//                                  << LOG_KV("INFO", oss.str());
+//            return false;
+//        }
+//        if (req.idx == nodeIdx())
+//        {
+//            TENDERMINTENGINE_LOG(TRACE) << LOG_DESC("InvalidViewChangeReq: own req")
+//                                  << LOG_KV("INFO", oss.str());
+//            return false;
+//        }
+//        if (req.view + 1 < m_toView && req.idx == source)
+//        {
+//            catchupView(req, oss);
+//        }
+//        /// check view and block height
+//        if (req.height < m_highestBlock.number() || req.view <= m_view)
+//        {
+//            TENDERMINTENGINE_LOG(TRACE) << LOG_DESC("InvalidViewChangeReq: invalid view or height")
+//                                  << LOG_KV("INFO", oss.str());
+//            return false;
+//        }
+//        /// check block hash
+//        if ((req.height == m_highestBlock.number() && req.block_hash != m_highestBlock.hash()) ||
+//            (m_blockChain->getBlockByHash(req.block_hash) == nullptr))
+//        {
+//            TENDERMINTENGINE_LOG(TRACE) << LOG_DESC("InvalidViewChangeReq, invalid hash")
+//                                  << LOG_KV("highHash", m_highestBlock.hash().abridged())
+//                                  << LOG_KV("INFO", oss.str());
+//            return false;
+//        }
+//        if (!checkSign(req))
+//        {
+//            TENDERMINTENGINE_LOG(TRACE) << LOG_DESC("InvalidViewChangeReq: invalid sign")
+//                                  << LOG_KV("INFO", oss.str());
+//            return false;
+//        }
+//        return true;
+//    }
+
+//    void TendermintEngine::catchupView(RoundChangeReq const& req, std::ostringstream& oss)
+//    {
+//        TENDERMINTENGINE_LOG(INFO) << LOG_DESC("Function:  catchupView");
+//        if (req.view + 1 < m_toView)
+//        {
+//            TENDERMINTENGINE_LOG(DEBUG) << LOG_DESC("catchupView") << LOG_KV("toView", m_toView)
+//                                  << LOG_KV("INFO", oss.str());
+//            dev::network::NodeID nodeId;
+//            bool succ = getNodeIDByIndex(nodeId, req.idx);
+//            if (succ)
+//            {
+//                sendViewChangeMsg(nodeId);
+//            }
+//        }
+//    }
+
+//    void TendermintEngine::checkAndChangeView()
+//    {
+////        Sealing sealing;
+////        sealing.block.header().populateFromParent(m_blockChain->getBlockByNumber(m_blockChain->number())->header());
+////        uint64_t parentTime = m_blockChain->getBlockByNumber(m_blockChain->number())->header().timestamp();
+////        sealing.block.header().setTimestamp(std::max(parentTime + 1, utcTime()));
+////        std::shared_ptr<dev::consensus::ConsensusInterface> m_consensusEngine;
+////
+////        BlockHeader& header = sealing.block.header();
+////        header.setSealerList(m_sealerList);
+////        header.setSealer(nodeIdx());
+////        header.setLogBloom(LogBloom());
+////        header.setGasUsed(u256(0));
+////        std::vector<bytes> extra_data;
+////        header.setExtraData(extra_data);
+////        sealing.block.calTransactionRoot();
+////        generatePrepare(sealing.block);
+//        IDXTYPE count = m_reqCache->getViewChangeSize(m_toView);
+//        if (count >= minValidNodes() - 1)
+//        {
+//            TENDERMINTENGINE_LOG(INFO) << LOG_DESC("checkAndChangeView: Reach consensus")
+//                                 << LOG_KV("to_view", m_toView);
+//            /// reach to consensue dure to fast view change
+//            if (m_timeManager.m_lastSignTime == 0)
+//            {
+//                m_fastViewChange = false;
+//            }
+//            m_leaderFailed = false;
+//            m_timeManager.m_lastConsensusTime = utcTime();
+//            m_view = m_toView;
+//            m_notifyNextLeaderSeal = false;
+//            m_reqCache->triggerViewChange(m_view);
+//            m_blockSync->noteSealingBlockNumber(m_blockChain->number());
+//        }
+//    }
 
 /// collect all caches
     void TendermintEngine::collectGarbage()
@@ -1353,14 +1353,14 @@ namespace consensus
                 tendermint_msg = req;
                 break;
             }
-            case RoundChangeReqPacket:
-            {
-                RoundChangeReq req;
-                succ = handleViewChangeMsg(req, tendermintMsg);
-                key = req.uniqueKey();
-                tendermint_msg = req;
-                break;
-            }
+//            case RoundChangeReqPacket:
+//            {
+//                RoundChangeReq req;
+//                succ = handleViewChangeMsg(req, tendermintMsg);
+//                key = req.uniqueKey();
+//                tendermint_msg = req;
+//                break;
+//            }
             default:
             {
                 TENDERMINTENGINE_LOG(DEBUG) << LOG_DESC("handleMsg:  Err pbft message")

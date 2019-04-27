@@ -176,9 +176,9 @@ protected:
                       std::unordered_set<dev::network::NodeID>(),
                       unsigned const& ttl = 0);
 
-    void sendViewChangeMsg(dev::network::NodeID const& nodeId);
-    bool sendMsg(dev::network::NodeID const& nodeId, unsigned const& packetType,
-                 std::string const& key, bytesConstRef data, unsigned const& ttl = 1);
+//    void sendViewChangeMsg(dev::network::NodeID const& nodeId);
+//    bool sendMsg(dev::network::NodeID const& nodeId, unsigned const& packetType,
+//                 std::string const& key, bytesConstRef data, unsigned const& ttl = 1);
     /// 1. generate and broadcast signReq according to given prepareReq
     /// 2. add the generated signReq into the cache
     bool broadcastSignReq(ProposeReq const& req);
@@ -186,8 +186,8 @@ protected:
     /// broadcast commit message
     bool broadcastCommitReq(ProposeReq const& req);
     /// broadcast view change message
-    bool shouldBroadcastViewChange();
-    bool broadcastViewChangeReq();
+//    bool shouldBroadcastViewChange();
+//    bool broadcastViewChangeReq();
     /// handler called when receiving data from the network
     void onRecvPBFTMessage(dev::p2p::NetworkException exception,
                            std::shared_ptr<dev::p2p::P2PSession> session, dev::p2p::P2PMessage::Ptr message);
@@ -200,14 +200,14 @@ protected:
     /// heck the size of the collected signReq is over 2/3 or not
     bool handleSignMsg(PreVoteReq& signReq, TendermintMsgPacket const& tendermintMsg);
     bool handleCommitMsg(PreCommitReq& commitReq, TendermintMsgPacket const& tendermintMsg);
-    bool handleViewChangeMsg(RoundChangeReq& viewChangeReq, TendermintMsgPacket const& tendermintMsg);
+//    bool handleViewChangeMsg(RoundChangeReq& viewChangeReq, TendermintMsgPacket const& tendermintMsg);
     void handleMsg(TendermintMsgPacket const& tendermintMsg);
-    void catchupView(RoundChangeReq const& req, std::ostringstream& oss);
+//    void catchupView(RoundChangeReq const& req, std::ostringstream& oss);
     void checkAndCommit();
 
     /// if collect >= 2/3 SignReq and CommitReq, then callback this function to commit block
     void checkAndSave();
-    void checkAndChangeView();
+//    void checkAndChangeView();
 
 protected:
     void initPBFTEnv(unsigned _view_timeout);
