@@ -684,7 +684,7 @@ namespace consensus
     void TendermintEngine::onRecvTendermintMessage(
             NetworkException, std::shared_ptr<P2PSession> session, P2PMessage::Ptr message)
     {
-        TENDERMINTENGINE_LOG(INFO) << LOG_DESC("Function:  onRecvPBFTMessage");
+        TENDERMINTENGINE_LOG(INFO) << LOG_DESC("Function:  onRecvTendermintMessage");
         if (nodeIdx() == MAXIDX)
         {
             TENDERMINTENGINE_LOG(TRACE) << LOG_DESC(
