@@ -51,7 +51,7 @@ public:
             {
                     TENDERMINTENGINE_LOG(INFO) << LOG_DESC("Register handler for PBFTEngine");
             m_service->registerHandlerByProtoclID(
-            m_protocolId, boost::bind(&TendermintEngine::onRecvPBFTMessage, this, _1, _2, _3));
+            m_protocolId, boost::bind(&TendermintEngine::onRecvTendermintMessage, this, _1, _2, _3));
             m_broadCastCache = std::make_shared<TendermintBroadcastCache>();
             m_reqCache = std::make_shared<TendermintReqCache>(m_protocolId);
 
@@ -189,7 +189,7 @@ protected:
 //    bool shouldBroadcastViewChange();
 //    bool broadcastViewChangeReq();
     /// handler called when receiving data from the network
-    void onRecvPBFTMessage(dev::p2p::NetworkException exception,
+    void onRecvTendermintMessage(dev::p2p::NetworkException exception,
                            std::shared_ptr<dev::p2p::P2PSession> session, dev::p2p::P2PMessage::Ptr message);
     bool handlePrepareMsg(ProposeReq const& prepare_req, std::string const& endpoint = "self");
     /// handler prepare messages

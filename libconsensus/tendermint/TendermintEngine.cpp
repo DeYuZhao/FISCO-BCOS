@@ -681,7 +681,7 @@ namespace consensus
  * @param session: the session related to the network data(can get informations about the sender)
  * @param message: message constructed from data received from the network
  */
-    void TendermintEngine::onRecvPBFTMessage(
+    void TendermintEngine::onRecvTendermintMessage(
             NetworkException, std::shared_ptr<P2PSession> session, P2PMessage::Ptr message)
     {
         TENDERMINTENGINE_LOG(INFO) << LOG_DESC("Function:  onRecvPBFTMessage");
