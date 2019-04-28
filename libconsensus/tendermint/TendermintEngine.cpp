@@ -705,7 +705,7 @@ namespace consensus
         }
         else
         {
-            TENDERMINTENGINE_LOG(DEBUG) << LOG_DESC("onRecvPBFTMessage: illegal msg ")
+            TENDERMINTENGINE_LOG(DEBUG) << LOG_DESC("onRecvTendermintMessage: illegal msg ")
                                   << LOG_KV("fromId", tendermint_msg.packet_id)
                                   << LOG_KV("fromIp", tendermint_msg.endpoint) << LOG_KV("nodeIdx", nodeIdx())
                                   << LOG_KV("myNode", m_keyPair.pub().abridged());
